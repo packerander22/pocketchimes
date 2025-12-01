@@ -42,125 +42,100 @@
     .card {
       background: radial-gradient(circle at top left, #1f2937 0, #020617 70%);
       border-radius: 1.75rem;
-      border: 1px solid #111827;
+      border: 1px solid #020617;
       box-shadow: var(--shadow-soft);
-      padding: 1.25rem 1.4rem 1.5rem;
+      padding: 1.4rem 1.5rem 1.6rem;
       backdrop-filter: blur(16px);
-    }
-
-    .title-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.75rem;
-      margin-bottom: 0.75rem;
+      text-align: center;
     }
 
     .title {
-      font-size: 1.4rem;
+      font-size: 1.5rem;
       font-weight: 700;
-      letter-spacing: 0.02em;
-      display: flex;
-      align-items: center;
-      gap: 0.55rem;
-    }
-
-    .title-circle {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: radial-gradient(circle at 30% 20%, #facc15 0, #f97316 40%, #b45309 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
-      font-size: 1.25rem;
+      letter-spacing: 0.03em;
+      margin-bottom: 0.4rem;
     }
 
     .subtitle {
       font-size: 0.9rem;
-      opacity: 0.8;
+      opacity: 0.82;
       line-height: 1.4;
-      margin-bottom: 0.9rem;
+      margin-bottom: 1.2rem;
+    }
+
+    .primary-btn {
+      border-radius: var(--radius-full);
+      border: none;
+      padding: 0.7rem 1.1rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: #facc15;
+      color: #1f2937;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.45);
+    }
+
+    .primary-btn:active {
+      transform: translateY(1px) scale(0.98);
+      box-shadow: 0 5px 12px rgba(0,0,0,0.55);
+    }
+
+    /* NOTE SELECTION SCREEN */
+
+    .note-card {
+      background: radial-gradient(circle at top left, #1f2937 0, #020617 70%);
+      border-radius: 1.75rem;
+      border: 1px solid #020617;
+      box-shadow: var(--shadow-soft);
+      padding: 1.4rem 1.5rem 1.6rem;
+      backdrop-filter: blur(16px);
+      text-align: center;
+    }
+
+    .note-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+    }
+
+    .note-subtitle {
+      font-size: 0.85rem;
+      opacity: 0.8;
+      margin-bottom: 0.7rem;
     }
 
     .note-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 0.65rem;
-      margin-top: 0.9rem;
-      margin-bottom: 0.3rem;
-      transition: opacity 0.2s ease-out, filter 0.2s ease-out;
-    }
-
-    .note-grid.disabled {
-      opacity: 0.25;
-      filter: grayscale(0.8);
-      pointer-events: none;
+      margin-top: 0.4rem;
     }
 
     .note-btn {
       border: none;
-      border-radius: 1.1rem;
-      padding: 0.65rem 0.4rem;
-      font-weight: 600;
-      font-size: 0.95rem;
+      border-radius: 1rem;
+      padding: 0.6rem 0.3rem;
+      font-weight: 700;
+      font-size: 0.9rem;
       color: #0b1120;
       cursor: pointer;
-      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32);
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
       transform: translateY(0);
-      transition: transform 0.18s ease-out, box-shadow 0.18s ease-out, filter 0.18s ease-out;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-    }
-
-    .note-btn span.label {
-      font-size: 0.9rem;
-    }
-
-    .note-btn span.sub {
-      font-size: 0.7rem;
-      opacity: 0.9;
+      transition: transform 0.16s ease-out, box-shadow 0.16s ease-out,
+        filter 0.16s ease-out;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.35);
     }
 
     .note-btn:active {
-      transform: translateY(2px) scale(0.98);
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+      transform: translateY(2px) scale(0.97);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.55);
       filter: brightness(0.95);
     }
 
-    .note-btn:hover {
-      filter: brightness(1.05);
-    }
-
-    .perm-banner {
-      margin-top: 1rem;
-      font-size: 0.82rem;
-      opacity: 0.88;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .perm-banner button {
-      border-radius: var(--radius-full);
-      border: none;
-      padding: 0.3rem 0.9rem;
+    .note-help {
+      margin-top: 0.8rem;
       font-size: 0.8rem;
-      cursor: pointer;
-      background: rgba(248, 250, 252, 0.12);
-      color: var(--text);
-      border: 1px solid rgba(248, 250, 252, 0.18);
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-    }
-
-    .perm-banner button:active {
-      transform: translateY(1px);
+      opacity: 0.82;
     }
 
     /* PLAY SCREEN */
@@ -181,67 +156,13 @@
       display: flex;
     }
 
-    .play-note-label {
-      font-size: 3.8rem;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      margin-bottom: 1.4rem;
-      text-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .bell-visual {
-      width: 180px;
-      height: 180px;
-      position: relative;
-      margin-bottom: 0.9rem;
-    }
-
-    .bell-ring {
-      position: absolute;
-      inset: 0;
-      border-radius: 50%;
-      border: 6px solid rgba(15, 23, 42, 0.8);
-      background: radial-gradient(circle at 30% 20%, rgba(248, 250, 252, 0.95) 0,
-        rgba(248, 250, 252, 0.75) 45%, rgba(248, 250, 252, 0.25) 100%);
-      box-shadow: 0 12px 26px rgba(15, 23, 42, 0.45);
-      transform-origin: 50% 50%;
-      transform: rotate(0deg);
-      transition: transform 0.04s ease-out, box-shadow 0.04s ease-out;
-    }
-
-    .bell-ring.ping {
-      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.7);
-    }
-
-    .bell-clapper {
-      position: absolute;
-      width: 38px;
-      height: 38px;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      border-radius: 50%;
-      background: radial-gradient(circle at 30% 20%, #111827 0, #020617 100%);
-      box-shadow: 0 5px 10px rgba(15, 23, 42, 0.9);
-      pointer-events: none; /* clapper never moves, never clickable */
-    }
-
-    .hint {
-      font-size: 0.85rem;
-      opacity: 0.9;
-      max-width: 14rem;
-      line-height: 1.4;
-    }
-
     .back-btn {
       position: fixed;
       top: 0.9rem;
       left: 0.9rem;
       border-radius: var(--radius-full);
       border: 1px solid rgba(15, 23, 42, 0.4);
-      background: rgba(248, 250, 252, 0.9);
+      background: rgba(248, 250, 252, 0.92);
       padding: 0.35rem 0.85rem;
       font-size: 0.8rem;
       display: inline-flex;
@@ -256,45 +177,96 @@
       box-shadow: 0 4px 8px rgba(15, 23, 42, 0.45);
     }
 
+    .play-note-label {
+      font-size: 3.4rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      margin-bottom: 1.3rem;
+      text-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
+      cursor: pointer;
+    }
+
+    .bell-visual {
+      position: relative;
+      width: 150px;
+      height: 150px;
+      margin-bottom: 1rem;
+    }
+
+    .bell-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 8px solid rgba(15, 23, 42, 0.85);
+      background: radial-gradient(circle at 30% 20%,
+        rgba(248,250,252,0.96) 0,
+        rgba(248,250,252,0.7) 40%,
+        rgba(248,250,252,0.25) 100%);
+      box-shadow: 0 12px 26px rgba(15, 23, 42, 0.45);
+      transform-origin: 50% 50%;
+      transform: rotate(0deg);
+      transition: transform 0.08s ease-out;
+    }
+
+    .bell-clapper {
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.95);
+      box-shadow: 0 5px 10px rgba(15,23,42,0.7);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .hint-text {
+      font-size: 0.85rem;
+      opacity: 0.9;
+      max-width: 18rem;
+      line-height: 1.5;
+    }
+
     @media (max-width: 400px) {
-      .card {
-        padding: 1rem 1.1rem 1.2rem;
+      .card,
+      .note-card {
+        padding: 1.2rem 1.2rem 1.3rem;
       }
       .note-btn {
-        padding: 0.6rem 0.3rem;
-      }
-      .play-note-label {
-        font-size: 3.2rem;
-      }
-      .bell-visual {
-        width: 160px;
-        height: 160px;
+        padding: 0.55rem 0.25rem;
       }
     }
   </style>
 </head>
 <body>
-  <!-- HOME SCREEN -->
-  <div class="app" id="home-screen">
+  <!-- MOTION PERMISSION SCREEN -->
+  <div class="app" id="motion-screen">
     <div class="card">
-      <div class="title-row">
-        <div class="title">
-          <div class="title-circle">🔔</div>
-          Pocket BellChoir
-        </div>
-      </div>
-
+      <div class="title">Pocket BellChoir</div>
       <p class="subtitle">
-        Step 1: allow motion & sound. Step 2: choose a note. Step 3: swing your phone like a handbell.
+        This app uses your phone’s motion sensors so you can swing it like a handbell.
+        On iPhone, you’ll be asked to allow motion access.
       </p>
+      <button class="primary-btn" id="start-btn">
+        Enable motion & start
+      </button>
+    </div>
+  </div>
 
-      <div class="note-grid disabled" id="note-grid">
-        <!-- Buttons injected by JS -->
+  <!-- NOTE SELECTION SCREEN -->
+  <div class="app" id="note-screen" style="display:none;">
+    <div class="note-card">
+      <div class="note-title">Choose your note</div>
+      <div class="note-subtitle">
+        Each note uses the classic Boomwhacker color.
       </div>
 
-      <div class="perm-banner" id="perm-banner">
-        <span>Enable motion first to unlock the notes (required on iPhone).</span>
-        <button id="req-permission-btn">Enable motion & sound</button>
+      <div class="note-grid" id="note-grid">
+        <!-- Note buttons injected by JS -->
+      </div>
+
+      <div class="note-help">
+        Swing to ring. You’ll see your note and bell on the next screen.
       </div>
     </div>
   </div>
@@ -302,18 +274,21 @@
   <!-- PLAY SCREEN -->
   <div class="play-screen" id="play-screen">
     <button class="back-btn" id="back-btn">
-      ← Change note
+      ← Notes
     </button>
 
-    <div class="play-note-label" id="play-note-label">C4</div>
+    <div class="play-note-label" id="play-note-label">
+      C4
+    </div>
 
-    <div class="bell-visual" id="bell-visual">
+    <div class="bell-visual">
       <div class="bell-ring" id="bell-ring"></div>
       <div class="bell-clapper"></div>
     </div>
 
-    <div class="hint">
-      Swing to ring. If needed, tap the note to play it.
+    <div class="hint-text">
+      Swing your phone in any direction to ring.
+      Tap the note if needed.
     </div>
   </div>
 
@@ -331,19 +306,18 @@
     ];
 
     // ---- DOM ELEMENTS ----
-    const noteGrid = document.getElementById("note-grid");
-    const homeScreen = document.getElementById("home-screen");
+    const motionScreen = document.getElementById("motion-screen");
+    const noteScreen = document.getElementById("note-screen");
     const playScreen = document.getElementById("play-screen");
-    const playNoteLabel = document.getElementById("play-note-label");
-    const bellVisual = document.getElementById("bell-visual");
-    const bellRing = document.getElementById("bell-ring");
+
+    const startBtn = document.getElementById("start-btn");
+    const noteGrid = document.getElementById("note-grid");
     const backBtn = document.getElementById("back-btn");
-    const permBanner = document.getElementById("perm-banner");
-    const reqPermBtn = document.getElementById("req-permission-btn");
+    const playNoteLabel = document.getElementById("play-note-label");
+    const bellRing = document.getElementById("bell-ring");
 
     // ---- AUDIO SETUP ----
     let audioCtx = null;
-    let motionReady = false;
 
     function ensureAudioCtx() {
       if (!audioCtx) {
@@ -385,162 +359,159 @@
 
       const now = audioCtx.currentTime;
 
+      const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
-      // Louder overall, with a solid base so it's audible in a room
+
+      const baseFreq = freqForNote(note.name, note.octave);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(baseFreq * 2, now);
+
+      // Louder overall, scaled by swing strength (velocity 0..1)
       const maxGain = 1.0;
       const vel = Math.min(Math.max(velocity, 0), 1);
-      const startGain = 0.35 + vel * (maxGain - 0.35); // 0.35–1.0
+      const startGain = 0.4 + vel * (maxGain - 0.4); // base loud + extra for big swings
+
       gain.gain.setValueAtTime(startGain, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.1);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.0);
 
-      // A couple of partials so it's brighter / more "bell-like"
-      const baseFreq = freqForNote(note.name, note.octave);
-
-      const osc1 = audioCtx.createOscillator();
-      osc1.type = "triangle";
-      osc1.frequency.setValueAtTime(baseFreq * 2, now);
-
-      const osc2 = audioCtx.createOscillator();
-      osc2.type = "sine";
-      osc2.frequency.setValueAtTime(baseFreq * 3, now);
-      osc2.detune.setValueAtTime(4, now); // tiny shimmer
-
-      osc1.connect(gain);
-      osc2.connect(gain);
+      osc.connect(gain);
       gain.connect(audioCtx.destination);
 
-      osc1.start(now);
-      osc2.start(now);
-      osc1.stop(now + 1.2);
-      osc2.stop(now + 1.2);
+      osc.start(now);
+      osc.stop(now + 1.1);
 
-      // Visual: outer ring moves based on velocity, clapper stays fixed
-      bellRing.classList.add("ping");
-      const angle = 6 + vel * 20; // 6–26 degrees
-      const direction = Math.random() < 0.5 ? -1 : 1;
-      bellRing.style.transform = `rotate(${direction * angle}deg)`;
+      // Visual: only outer ring rotates to show strength
+      const maxAngle = 18; // degrees
+      const angle = (Math.random() < 0.5 ? 1 : -1) * (6 + vel * (maxAngle - 6));
+      bellRing.style.transform = `rotate(${angle}deg)`;
       setTimeout(() => {
-        bellRing.classList.remove("ping");
         bellRing.style.transform = "rotate(0deg)";
-      }, 150);
+      }, 140);
     }
 
-    // ---- MOTION HANDLING (omnidirectional, one ding per swing) ----
+    // ---- MOTION HANDLING (jerk-based, omnidirectional) ----
     let currentNote = null;
     let lastRingTime = 0;
 
-    const MIN_INTERVAL = 220;       // ms between rings
-    const SWING_START_ACCEL = 3.0;  // in m/s^2 (using linear acceleration if available)
-    const SWING_END_ACCEL   = 1.0;
-    const MAX_ACCEL         = 15.0;
+    const MIN_INTERVAL = 200;      // ms between rings
+    const SWING_START_DELTA = 4.5; // change in acceleration needed to trigger
+    const SWING_END_DELTA   = 1.5; // change below this resets the swing
+    const MAX_DELTA         = 12;  // upper bound for loudest swings
 
     let inSwing = false;
-
-    function getAccelMagnitude(event) {
-      // Prefer linear acceleration (without gravity) if available
-      let acc = event.acceleration;
-      if (acc && (acc.x !== null || acc.y !== null || acc.z !== null)) {
-        const ax = acc.x || 0;
-        const ay = acc.y || 0;
-        const az = acc.z || 0;
-        return Math.sqrt(ax * ax + ay * ay + az * az);
-      }
-      // Fallback: including gravity (less ideal, but keeps it working elsewhere)
-      acc = event.accelerationIncludingGravity;
-      if (!acc) return 0;
-      const ax = acc.x || 0;
-      const ay = acc.y || 0;
-      const az = acc.z || 0;
-      return Math.sqrt(ax * ax + ay * ay + az * az);
-    }
+    let lastMagnitude = null;
 
     function handleMotion(event) {
       if (!currentNote) return;
-      const magnitude = getAccelMagnitude(event);
+
+      // Prefer linear acceleration if available, else fall back to including gravity
+      let acc = event.acceleration;
+      if (
+        !acc ||
+        (acc.x === null && acc.y === null && acc.z === null)
+      ) {
+        acc = event.accelerationIncludingGravity;
+      }
+      if (!acc) return;
+
+      const ax = acc.x || 0;
+      const ay = acc.y || 0;
+      const az = acc.z || 0;
+      const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
+
+      if (lastMagnitude === null) {
+        lastMagnitude = magnitude;
+        return;
+      }
+
+      const delta = Math.abs(magnitude - lastMagnitude);
+      lastMagnitude = magnitude;
+
       const now = performance.now();
 
-      // Reset swing once things calm down
-      if (magnitude < SWING_END_ACCEL) {
+      // Reset swing when things calm down
+      if (delta < SWING_END_DELTA) {
         inSwing = false;
       }
 
       if (inSwing) return;
       if (now - lastRingTime < MIN_INTERVAL) return;
 
-      if (magnitude >= SWING_START_ACCEL) {
+      if (delta >= SWING_START_DELTA) {
         inSwing = true;
         lastRingTime = now;
 
-        const clamped = Math.min(Math.max(magnitude, SWING_START_ACCEL), MAX_ACCEL);
-        const velocity = (clamped - SWING_START_ACCEL) / (MAX_ACCEL - SWING_START_ACCEL);
+        // Map delta to 0..1
+        const clamped = Math.min(Math.max(delta, SWING_START_DELTA), MAX_DELTA);
+        const velocity = (clamped - SWING_START_DELTA) / (MAX_DELTA - SWING_START_DELTA);
 
         playBell(currentNote, velocity);
       }
     }
 
     function startMotionListening() {
+      lastMagnitude = null;
       window.addEventListener("devicemotion", handleMotion);
     }
 
     function stopMotionListening() {
       window.removeEventListener("devicemotion", handleMotion);
+      lastMagnitude = null;
+      inSwing = false;
     }
 
-    // ---- PERMISSION HANDLING (must run before notes are active) ----
-    async function requestMotionAndAudio() {
-      // 1) Wake audio
-      await resumeAudioCtx();
-
-      // 2) Ask for motion permission if needed
-      let ok = true;
+    // ---- MOTION PERMISSION (iOS) ----
+    async function requestMotionPermission() {
       try {
         if (
           typeof DeviceMotionEvent !== "undefined" &&
           typeof DeviceMotionEvent.requestPermission === "function"
         ) {
           const res = await DeviceMotionEvent.requestPermission();
-          ok = res === "granted";
-          if (!ok) {
-            alert("Motion permission denied. You can still tap the note to ring.");
-          }
+          // We move on either way; if denied, tapping the note still works
+          return res === "granted";
+        } else {
+          return true;
         }
       } catch (err) {
         console.error("Motion permission error:", err);
+        return false;
       }
-
-      // Either way, we've made the attempt. Unlock notes now.
-      motionReady = true;
-      noteGrid.classList.remove("disabled");
-      permBanner.style.display = "none";
-
-      // Start listening for motion (no note selected yet, so nothing rings)
-      startMotionListening();
     }
 
-    reqPermBtn.addEventListener("click", requestMotionAndAudio);
+    // ---- UI FLOW ----
+    startBtn.addEventListener("click", async () => {
+      // This tap is our golden gesture: wake audio + ask for motion
+      await resumeAudioCtx();
+      await requestMotionPermission();
 
-    // ---- UI / NAVIGATION ----
+      // Show note selection
+      motionScreen.style.display = "none";
+      noteScreen.style.display = "block";
+    });
+
     function showPlayScreen(note) {
       currentNote = note;
       playNoteLabel.textContent = `${note.name}${note.octave}`;
       playScreen.style.background = note.color;
-      homeScreen.style.display = "none";
+      noteScreen.style.display = "none";
       playScreen.classList.add("active");
+
+      startMotionListening();
     }
 
-    function showHomeScreen() {
+    function showNoteScreen() {
       currentNote = null;
+      stopMotionListening();
       playScreen.classList.remove("active");
-      homeScreen.style.display = "flex";
+      noteScreen.style.display = "block";
     }
 
-    backBtn.addEventListener("click", showHomeScreen);
+    backBtn.addEventListener("click", showNoteScreen);
 
-    // Tap-note fallback
+    // Tap note text to ring (fallback)
     playNoteLabel.addEventListener("click", () => {
-      if (currentNote) {
-        playBell(currentNote, 0.8);
-      }
+      if (currentNote) playBell(currentNote, 1);
     });
 
     // ---- INIT NOTE BUTTONS ----
@@ -549,26 +520,14 @@
         const btn = document.createElement("button");
         btn.className = "note-btn";
         btn.style.background = n.color;
-
-        const label = document.createElement("span");
-        label.className = "label";
-        label.textContent = `${n.name}${n.octave}`;
-        const sub = document.createElement("span");
-        sub.className = "sub";
-        sub.textContent = "tap after enabling";
-
-        btn.appendChild(label);
-        btn.appendChild(sub);
+        btn.textContent = `${n.name}${n.octave}`;
 
         btn.addEventListener("click", async () => {
-          // Guard: force motion/audio setup first
-          if (!motionReady) {
-            await requestMotionAndAudio();
-          }
+          // Extra safety: wake audio on every tap
           await resumeAudioCtx();
           showPlayScreen(n);
-          // Confirmation ding
-          playBell(n, 0.7);
+          // Quick confirmation ring
+          playBell(n, 0.8);
         });
 
         noteGrid.appendChild(btn);
