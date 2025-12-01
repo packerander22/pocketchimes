@@ -231,7 +231,7 @@
 
     .sustain-wrapper {
       width: 100%;
-      max-width: 320px;
+      max-width: 220px; /* narrower slider */
       margin-top: 0.4rem;
       font-size: 0.8rem;
       opacity: 0.9;
@@ -429,7 +429,7 @@
       const gain = audioCtx.createGain();
 
       osc.type = "sine";
-      // Slightly higher (bell-ish) but clean: one octave up
+      // One octave up for a clearer bell feel
       osc.frequency.setValueAtTime(baseFreq * 2, now);
 
       const vel = Math.min(Math.max(velocity, 0), 1);
@@ -439,8 +439,13 @@
 
       gain.gain.setValueAtTime(gainValue, now);
 
-      // Sustain: 0 => ~0.25s, 1 => ~2.5s
-      const sustainDuration = 0.25 + sustainFactor * 2.25;
+      // Sustain: new mapping
+      // Old mid (~0.5) = ~1.375s. That is now our minimum.
+      const MIN_SUSTAIN = 1.375; // seconds
+      const MAX_SUSTAIN = 3.0;   // seconds
+      const sustainDuration =
+        MIN_SUSTAIN + sustainFactor * (MAX_SUSTAIN - MIN_SUSTAIN);
+
       gain.gain.exponentialRampToValueAtTime(0.0001, now + sustainDuration);
 
       osc.connect(gain);
@@ -464,7 +469,7 @@
       }, 180);
     }
 
-    // ---- MOTION HANDLING (peak + directional change, with direction vector) ----
+    // ---- MOTION HANDLING (peak + directional change, with accel-based direction) ----
     let currentNote = null;
     let lastRingTime = 0;
 
@@ -477,39 +482,27 @@
     let lastMagnitude = null;
     let lastDelta = 0;              // previous signed delta
 
-    // capture first "build" vector for each swing
-    let buildAx = 0, buildAy = 0, buildAz = 0;
-    let haveBuildVector = false;
+    // Track last acceleration vector so we can use it for direction
+    let lastAx = 0, lastAy = 0, lastAz = 0;
 
-    function computeVisualDirFromBuildVector() {
-      // Dominant axis of initial build, then move opposite that axis.
-      const ax = buildAx;
-      const ay = buildAy;
-      const az = buildAz;
-
+    function computeVisualDirFromAccel(ax, ay, az) {
       const absX = Math.abs(ax);
-      const absY = Math.abs(ay);
       const absZ = Math.abs(az);
 
       // If horizontal (X) dominates, use that for left/right
-      if (absX >= absY && absX >= absZ && absX > 0) {
+      if (absX >= absZ && absX > 0.8) {
         // positive X = swing right => bell left
         return ax > 0 ? -1 : 1;
       }
 
-      // If forward/back (Z) dominates, approximate as left/right too
-      if (absZ >= absX && absZ >= absY && absZ > 0) {
-        // Assume negative Z ~ forward away from you => bell "back"
-        // Map "forward" to left, "back" to right (arbitrary but opposite)
-        return az < 0 ? -1 : 1;
+      // If forward/back (Z) dominates, map forward/back into a left/right tilt
+      if (absZ > 0.8) {
+        // On most devices held upright, negative Z ≈ forward (away from you)
+        // "Forward swing, bell moves back" -> choose a consistent opposite mapping
+        return az < 0 ? 1 : -1;
       }
 
-      // If vertical (Y) dominates, just pick a consistent opposite
-      if (absY > 0) {
-        return ay > 0 ? -1 : 1;
-      }
-
-      // Fallback
+      // Fallback: just pick a side
       return Math.random() < 0.5 ? -1 : 1;
     }
 
@@ -526,6 +519,10 @@
       const ax = acc.x || 0;
       const ay = acc.y || 0;
       const az = acc.z || 0;
+      lastAx = ax;
+      lastAy = ay;
+      lastAz = az;
+
       const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
 
       if (lastMagnitude === null) {
@@ -537,18 +534,9 @@
       const absDelta = Math.abs(signedDelta);
       const now = performance.now();
 
-      // Capture initial build vector once for this swing
-      if (!haveBuildVector && absDelta > DELTA_RING_MIN) {
-        buildAx = ax;
-        buildAy = ay;
-        buildAz = az;
-        haveBuildVector = true;
-      }
-
       // Reset swing when jerk settles
       if (absDelta < RESET_DELTA) {
         inSwing = false;
-        haveBuildVector = false;
       }
 
       // We want a reversal: building in one direction, then switching
@@ -582,14 +570,9 @@
           const maxVel = 1.0;
           const velocity = minVel + t * (maxVel - minVel);
 
-          const visualDir = haveBuildVector
-            ? computeVisualDirFromBuildVector()
-            : (lastDelta > 0 ? -1 : 1);
+          const visualDir = computeVisualDirFromAccel(lastAx, lastAy, lastAz);
 
           playBell(currentNote, velocity, visualDir);
-
-          // Reset build vector after ring for next swing
-          haveBuildVector = false;
         }
       }
 
@@ -601,8 +584,6 @@
       lastMagnitude = null;
       lastDelta = 0;
       inSwing = false;
-      buildAx = buildAy = buildAz = 0;
-      haveBuildVector = false;
       window.addEventListener("devicemotion", handleMotion);
     }
 
@@ -611,7 +592,6 @@
       lastMagnitude = null;
       lastDelta = 0;
       inSwing = false;
-      haveBuildVector = false;
     }
 
     // ---- MOTION PERMISSION (iOS) ----
@@ -680,7 +660,7 @@
         btn.style.background = n.color;
         btn.textContent = `${n.name}${n.octave}`;
 
-        btn.addEventListener("click", async () => {
+      btn.addEventListener("click", async () => {
           // Extra safety: wake audio on every tap
           await resumeAudioCtx();
           showPlayScreen(n);
