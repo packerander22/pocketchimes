@@ -351,7 +351,7 @@
       return 440 * Math.pow(2, semitonesFromA4 / 12);
     }
 
-    // velocity here is directly the gain (0..1), but we only ever pass 0.25..1
+    // velocity here becomes gain (we'll keep it 0.6–1.3 for loudness)
     function playBell(note, velocity = 1) {
       if (!note) return;
       ensureAudioCtx();
@@ -363,46 +363,58 @@
 
       const now = audioCtx.currentTime;
 
-      const osc = audioCtx.createOscillator();
+      const baseFreq = freqForNote(note.name, note.octave);
+
+      // Two oscillators (fundamental + overtone) so it's brighter / more piercing
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
 
-      const baseFreq = freqForNote(note.name, note.octave);
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(baseFreq * 2, now);
+      osc1.type = "sine";
+      osc2.type = "sine";
+      osc1.frequency.setValueAtTime(baseFreq * 2, now);     // main
+      osc2.frequency.setValueAtTime(baseFreq * 3, now);     // overtone
 
-      const gainValue = Math.min(Math.max(velocity, 0), 1); // 0..1
+      const vel = Math.min(Math.max(velocity, 0), 1);
+      const minVol = 0.6;   // already pretty loud
+      const maxVol = 1.3;   // >1 => can clip a bit, sounds louder
+      const gainValue = minVol + vel * (maxVol - minVol);
+
       gain.gain.setValueAtTime(gainValue, now);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.0);
 
-      osc.connect(gain);
+      osc1.connect(gain);
+      osc2.connect(gain);
       gain.connect(audioCtx.destination);
 
-      osc.start(now);
-      osc.stop(now + 1.1);
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 1.1);
+      osc2.stop(now + 1.1);
 
       // Visual: outer ring swings like a real bell (rotation around top)
-      const minAngle = 8;   // degrees
-      const maxAngle = 26;  // degrees
-      const amp = minAngle + (maxAngle - minAngle) * gainValue; // stronger swing -> more angle
+      const minAngle = 10;   // degrees
+      const maxAngle = 32;   // degrees
+      const amp = minAngle + (maxAngle - minAngle) * vel;
       const direction = Math.random() < 0.5 ? -1 : 1;
       bellRing.style.transform = `rotate(${direction * amp}deg)`;
       setTimeout(() => {
         bellRing.style.transform = "rotate(0deg)";
-      }, 160);
+      }, 180);
     }
 
     // ---- MOTION HANDLING (peak + directional change based) ----
     let currentNote = null;
     let lastRingTime = 0;
 
-    const MIN_INTERVAL = 220;        // ms between rings
-    const DELTA_RING_MIN = 2.0;      // new lower threshold (~1/4 of old)
-    const DELTA_RING_MAX = 7.0;      // old threshold -> now full volume
-    const RESET_DELTA    = 1.0;      // below this, swing ends
+    const MIN_INTERVAL     = 260;   // ms between rings
+    const DELTA_RING_MIN   = 4.0;   // harder minimum threshold to trigger
+    const DELTA_RING_MAX   = 10.0;  // a strong swing that maps to full volume
+    const RESET_DELTA      = 1.5;   // below this, swing ends
 
     let inSwing = false;
     let lastMagnitude = null;
-    let lastDelta = 0;               // previous signed delta
+    let lastDelta = 0;              // previous signed delta
 
     function handleMotion(event) {
       if (!currentNote) return;
@@ -424,7 +436,7 @@
         return;
       }
 
-      const signedDelta = magnitude - lastMagnitude; // can be positive or negative
+      const signedDelta = magnitude - lastMagnitude; // positive/negative
       const absDelta = Math.abs(signedDelta);
       const now = performance.now();
 
@@ -433,7 +445,7 @@
         inSwing = false;
       }
 
-      // We want a reversal: acceleration building in one direction, then switching
+      // We want a reversal: building in one direction, then switching
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
       const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
@@ -447,22 +459,24 @@
           now - lastRingTime > MIN_INTERVAL) {
 
         const peak = Math.abs(lastDelta); // how big the buildup was
+
         if (peak >= DELTA_RING_MIN) {
           inSwing = true;
           lastRingTime = now;
 
-          // Map peak from [DELTA_RING_MIN .. DELTA_RING_MAX] -> [0.25 .. 1.0]
+          // Map peak from [DELTA_RING_MIN .. DELTA_RING_MAX] -> [0.0 .. 1.0]
           const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
           let t = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN); // 0..1
 
-          // Make it easy to reach near 1.0 (quick ramp)
-          t = Math.pow(t, 0.6); // exponent < 1 => steeper near top
+          // Make the loudness ramp fast so most swings are very loud
+          t = Math.pow(t, 0.6); // exponent <1 => steeper near top
 
-          const minVol = 0.25; // quietest ring is ~25% volume
-          const maxVol = 1.0;
-          const volume = minVol + t * (maxVol - minVol);
+          // Convert t to velocity: 0.25..1 so even min is fairly loud
+          const minVel = 0.25;
+          const maxVel = 1.0;
+          const velocity = minVel + t * (maxVel - minVel);
 
-          playBell(currentNote, volume);
+          playBell(currentNote, velocity);
         }
       }
 
