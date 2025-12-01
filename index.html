@@ -469,15 +469,12 @@
 
       let transform;
       if (dir === "left") {
-        // rotate left
         transform = `translateY(0px) rotate(${-amp}deg)`;
       } else if (dir === "right") {
         transform = `translateY(0px) rotate(${amp}deg)`;
       } else if (dir === "up") {
-        // move up (toward you)
         transform = `translateY(${-verticalOffset}px) rotate(0deg)`;
       } else if (dir === "down") {
-        // move down (away from you)
         transform = `translateY(${verticalOffset}px) rotate(0deg)`;
       } else {
         transform = `translateY(0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * amp}deg)`;
@@ -489,7 +486,7 @@
       }, 180);
     }
 
-    // ---- MOTION HANDLING (peak + directional change, using build vector) ----
+    // ---- MOTION HANDLING (peak + directional change) ----
     let currentNote = null;
     let lastRingTime = 0;
 
@@ -502,45 +499,29 @@
     let lastMagnitude = null;
     let lastDelta = 0;              // previous signed delta
 
-    let buildAx = 0, buildAy = 0, buildAz = 0;
-    let haveBuildVector = false;
+    // Decide visual direction from *current* acceleration
+    function computeVisualDirFromAccel(ax, ay, az) {
+      const absX = Math.abs(ax);
+      const absY = Math.abs(ay);
+      const absZ = Math.abs(az);
 
-    // Lock to four cardinal visual directions based on a collapsed 2D vector:
-    // horizontal (left/right) vs combined vertical (away/up vs toward/down).
-    function computeVisualDirFromBuildVector() {
-      const ax = buildAx;
-      const ay = buildAy;
-      const az = buildAz;
+      const maxComp = Math.max(absX, absY, absZ);
 
-      // Interpret coordinates for an upright phone, screen facing you:
-      // - X: left/right
-      // - Z: forward/back
-      // - Y: up/down
-      //
-      // We combine "up + away" vs "down + toward" into one vertical axis.
-      const horiz = ax;                  // right positive, left negative
-      const vertCombined = (-az) + (-ay);
-      //  -az: away (forward) => positive, toward => negative
-      //  -ay: up => positive, down => negative
-      // So positive vertCombined ≈ up/away, negative ≈ down/toward.
-
-      const absH = Math.abs(horiz);
-      const absV = Math.abs(vertCombined);
-
-      // If there's not a clear winner, bail to a simple horizontal tilt
-      if (absH < 0.8 && absV < 0.8) {
+      // If everything is tiny / noisy, just fall back
+      if (maxComp < 0.8) {
         return Math.random() < 0.5 ? "left" : "right";
       }
 
-      if (absH > absV) {
-        // Horizontal dominates -> left/right
-        // Swing right (horiz > 0) -> bell moves left
-        return horiz > 0 ? "left" : "right";
+      if (maxComp === absX) {
+        // X axis: screen plane, positive to the right
+        return ax > 0 ? "right" : "left";
+      } else if (maxComp === absY) {
+        // Y axis: screen plane, positive towards the top
+        return ay > 0 ? "up" : "down";
       } else {
-        // Vertical dominates -> up/down-like
-        // Positive (up/away) -> bell down
-        // Negative (down/toward) -> bell up
-        return vertCombined > 0 ? "down" : "up";
+        // Z axis: perpendicular to screen, positive out of screen (toward you)
+        // Map toward you to "up", away from you to "down"
+        return az > 0 ? "up" : "down";
       }
     }
 
@@ -568,21 +549,12 @@
       const absDelta = Math.abs(signedDelta);
       const now = performance.now();
 
-      // Capture initial build vector once per swing (first time we exceed threshold)
-      if (!haveBuildVector && absDelta > DELTA_RING_MIN) {
-        buildAx = ax;
-        buildAy = ay;
-        buildAz = az;
-        haveBuildVector = true;
-      }
-
       // Reset swing when jerk settles
       if (absDelta < RESET_DELTA) {
         inSwing = false;
-        haveBuildVector = false;
       }
 
-      // We want a reversal: building in one direction, then switching
+      // Look for a reversal in jerk to mimic "swing then catch"
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
       const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
@@ -613,14 +585,10 @@
           const maxVel = 1.0;
           const velocity = minVel + t * (maxVel - minVel);
 
-          const visualDir = haveBuildVector
-            ? computeVisualDirFromBuildVector()
-            : (Math.random() < 0.5 ? "left" : "right");
+          // Visual direction is based on the *current* acceleration vector
+          const visualDir = computeVisualDirFromAccel(ax, ay, az);
 
           playBell(currentNote, velocity, visualDir);
-
-          // Reset build vector for next swing
-          haveBuildVector = false;
         }
       }
 
@@ -632,7 +600,6 @@
       lastMagnitude = null;
       lastDelta = 0;
       inSwing = false;
-      haveBuildVector = false;
       window.addEventListener("devicemotion", handleMotion);
     }
 
@@ -641,7 +608,6 @@
       lastMagnitude = null;
       lastDelta = 0;
       inSwing = false;
-      haveBuildVector = false;
     }
 
     // ---- MOTION PERMISSION (iOS) ----
