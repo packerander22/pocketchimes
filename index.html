@@ -204,8 +204,7 @@
         rgba(248,250,252,0.7) 40%,
         rgba(248,250,252,0.25) 100%);
       box-shadow: 0 12px 26px rgba(15, 23, 42, 0.45);
-
-      /* 🔧 rotate around center so left/right doesn’t droop */
+      /* center pivot so left/right doesn’t sit low */
       transform-origin: 50% 50%;
       transform: translate(0px, 0px) rotate(0deg);
       transition: transform 0.09s ease-out;
@@ -405,7 +404,6 @@
       return "Long";
     }
 
-    // initialize sustain label from default slider value
     sustainValueLabel.textContent = labelForSustain(parseFloat(sustainSlider.value));
 
     sustainSlider.addEventListener("input", () => {
@@ -413,9 +411,7 @@
       sustainValueLabel.textContent = labelForSustain(sustainFactor);
     });
 
-    // Play one pure sine note, loud & stable pitch.
-    // velocity 0..1 -> gain 0.7..1.0
-    // visualDir: "left" | "right" | "up" | "down" | diagonals
+    // Pure sine, loud, fixed pitch, with sustain
     function playBell(note, velocity = 1, visualDir = null) {
       if (!note) return;
       ensureAudioCtx();
@@ -433,7 +429,7 @@
 
       osc.type = "sine";
       osc.frequency.cancelScheduledValues(now);
-      osc.frequency.setValueAtTime(baseFreq * 2, now); // one octave up, fixed
+      osc.frequency.setValueAtTime(baseFreq * 2, now); // one octave up
 
       const vel = Math.min(Math.max(velocity, 0), 1);
       const minVol = 0.7;
@@ -442,8 +438,8 @@
 
       gain.gain.setValueAtTime(gainValue, now);
 
-      const MIN_SUSTAIN = 1.375; // seconds
-      const MAX_SUSTAIN = 5.0;   // seconds
+      const MIN_SUSTAIN = 1.375;
+      const MAX_SUSTAIN = 5.0;
       const sustainDuration =
         MIN_SUSTAIN + sustainFactor * (MAX_SUSTAIN - MIN_SUSTAIN);
 
@@ -455,46 +451,25 @@
       osc.start(now);
       osc.stop(now + sustainDuration + 0.1);
 
-      // ---- Visual bell animation (8 directions) ----
+      // ---- Visual bell animation (4 directions) ----
       const minAngle = 10;   // degrees
       const maxAngle = 32;   // degrees
       const amp = minAngle + (maxAngle - minAngle) * vel;
-
-      const offset = amp; // px; same magnitude for all directions
-      const diagOffset = offset / Math.SQRT2;
-      const diagAngle = amp * 0.6;
+      const offset = amp;    // px
 
       let dir = visualDir || (Math.random() < 0.5 ? "left" : "right");
-
       let transform;
-      switch (dir) {
-        case "left":
-          transform = `translate(0px, 0px) rotate(${-amp}deg)`;
-          break;
-        case "right":
-          transform = `translate(0px, 0px) rotate(${amp}deg)`;
-          break;
-        case "up":
-          transform = `translate(0px, ${-offset}px) rotate(0deg)`;
-          break;
-        case "down":
-          transform = `translate(0px, ${offset}px) rotate(0deg)`;
-          break;
-        case "up-right":
-          transform = `translate(${diagOffset}px, ${-diagOffset}px) rotate(${diagAngle}deg)`;
-          break;
-        case "up-left":
-          transform = `translate(${-diagOffset}px, ${-diagOffset}px) rotate(${-diagAngle}deg)`;
-          break;
-        case "down-right":
-          transform = `translate(${diagOffset}px, ${diagOffset}px) rotate(${diagAngle}deg)`;
-          break;
-        case "down-left":
-          transform = `translate(${-diagOffset}px, ${diagOffset}px) rotate(${-diagAngle}deg)`;
-          break;
-        default:
-          transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * amp}deg)`;
-          break;
+
+      if (dir === "left") {
+        transform = `translate(0px, 0px) rotate(${-amp}deg)`;
+      } else if (dir === "right") {
+        transform = `translate(0px, 0px) rotate(${amp}deg)`;
+      } else if (dir === "up") {
+        transform = `translate(0px, ${-offset}px) rotate(0deg)`;
+      } else if (dir === "down") {
+        transform = `translate(0px, ${offset}px) rotate(0deg)`;
+      } else {
+        transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * amp}deg)`;
       }
 
       bellRing.style.transform = transform;
@@ -503,45 +478,43 @@
       }, 180);
     }
 
-    // ---- MOTION HANDLING (strike on reversal) ----
+    // ---- MOTION HANDLING (jerk reversal) ----
     let currentNote = null;
     let lastRingTime = 0;
 
-    const MIN_INTERVAL     = 200;   // ms between rings
-    const DELTA_RING_MIN   = 5.0;   // minimum threshold
-    const DELTA_RING_MAX   = 10.0;  // strong swing = full volume
-    const RESET_DELTA      = 1.5;   // below this, swing ends
+    const MIN_INTERVAL   = 200;   // ms between rings
+    const DELTA_RING_MIN = 5.0;   // minimum jerk threshold
+    const DELTA_RING_MAX = 10.0;  // strong swing = full volume
+    const RESET_DELTA    = 1.5;   // below this, swing ends
 
     let inSwing = false;
     let lastMagnitude = null;
     let lastDelta = 0;
 
-    // Convert raw accel to a 2D "screen-space" vector and snap to 8 directions
+    // Choose 1 of 4 directions from current accel
     function computeVisualDirFromAccel(ax, ay, az) {
-      // Approx screen X: phone's X axis
-      const screenX = ax;
-      // Approx screen Y: combine up/down (Y) and toward/away (Z)
-      // Positive = up/away, negative = down/toward
-      const screenY = ay + az;
+      const absX = Math.abs(ax);
+      const absY = Math.abs(ay);
+      const absZ = Math.abs(az);
 
-      const mag = Math.sqrt(screenX * screenX + screenY * screenY);
-      if (mag < 0.8) {
+      const maxComp = Math.max(absX, absY, absZ);
+
+      // If everything's tiny / noisy, default to horizontal
+      if (maxComp < 0.8) {
         return Math.random() < 0.5 ? "left" : "right";
       }
 
-      const angle = Math.atan2(screenY, screenX); // radians, -PI..PI
-      const deg = angle * 180 / Math.PI;
-
-      // Snap to nearest 45° sector
-      if (deg > -22.5 && deg <= 22.5) return "right";
-      if (deg > 22.5 && deg <= 67.5) return "up-right";
-      if (deg > 67.5 && deg <= 112.5) return "up";
-      if (deg > 112.5 && deg <= 157.5) return "up-left";
-      if (deg > 157.5 || deg <= -157.5) return "left";
-      if (deg > -157.5 && deg <= -112.5) return "down-left";
-      if (deg > -112.5 && deg <= -67.5) return "down";
-      // -67.5 .. -22.5
-      return "down-right";
+      if (maxComp === absX) {
+        // X axis: side-to-side
+        return ax > 0 ? "right" : "left";
+      } else if (maxComp === absZ) {
+        // Z axis: toward/away
+        // positive (toward) -> up, negative (away) -> down
+        return az > 0 ? "up" : "down";
+      } else {
+        // Y axis: up/down
+        return ay > 0 ? "up" : "down";
+      }
     }
 
     function handleMotion(event) {
@@ -568,12 +541,12 @@
       const absDelta = Math.abs(signedDelta);
       const now = performance.now();
 
-      // Reset when calm
+      // Reset swing when motion calms down
       if (absDelta < RESET_DELTA) {
         inSwing = false;
       }
 
-      // Look for jerk reversal (swing direction change)
+      // Detect jerk reversal (direction change)
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
       const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
@@ -596,6 +569,7 @@
           const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
           let t = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
 
+          // Make mid swings already pretty loud
           t = Math.pow(t, 0.6);
 
           const minVel = 0.3;
@@ -672,7 +646,7 @@
 
     backBtn.addEventListener("click", showNoteScreen);
 
-    // Tap note text or bell to ring (full loudness, random visual dir)
+    // Tap note or bell to ring (full loudness)
     playNoteLabel.addEventListener("click", () => {
       if (currentNote) playBell(currentNote, 1, null);
     });
