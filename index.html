@@ -205,7 +205,7 @@
         rgba(248,250,252,0.25) 100%);
       box-shadow: 0 12px 26px rgba(15, 23, 42, 0.45);
       transform-origin: 50% 15%;
-      transform: translateY(0px) rotate(0deg);
+      transform: translate(0px, 0px) rotate(0deg);
       transition: transform 0.09s ease-out;
     }
 
@@ -253,6 +253,67 @@
 
     .sustain-slider {
       width: 100%;
+    }
+
+    /* VOLUME SLIDER (left side, vertical) */
+    .volume-wrapper {
+      position: fixed;
+      left: 0.7rem;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.75rem;
+      opacity: 0.9;
+      pointer-events: auto;
+    }
+
+    .volume-label {
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+    }
+
+    .volume-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 120px;
+      height: 24px;
+      transform: rotate(-90deg);
+      background: transparent;
+    }
+
+    .volume-slider::-webkit-slider-runnable-track {
+      height: 4px;
+      background: rgba(15, 23, 42, 0.4);
+      border-radius: 999px;
+    }
+
+    .volume-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #facc15;
+      box-shadow: 0 0 0 2px rgba(15,23,42,0.5);
+      margin-top: -5px;
+    }
+
+    .volume-slider::-moz-range-track {
+      height: 4px;
+      background: rgba(15, 23, 42, 0.4);
+      border-radius: 999px;
+    }
+
+    .volume-slider::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #facc15;
+      border: none;
+      box-shadow: 0 0 0 2px rgba(15,23,42,0.5);
     }
 
     @media (max-width: 400px) {
@@ -304,6 +365,20 @@
     <button class="back-btn" id="back-btn">
       ← Notes
     </button>
+
+    <!-- Volume slider on left -->
+    <div class="volume-wrapper" id="volume-wrapper" style="display:none;">
+      <div class="volume-label">VOL</div>
+      <input
+        type="range"
+        id="volume-slider"
+        class="volume-slider"
+        min="1"
+        max="10"
+        step="0.5"
+        value="10"
+      />
+    </div>
 
     <div class="play-note-label" id="play-note-label">
       C4
@@ -364,9 +439,13 @@
     const sustainSlider = document.getElementById("sustain-slider");
     const sustainValueLabel = document.getElementById("sustain-value-label");
 
+    const volumeWrapper = document.getElementById("volume-wrapper");
+    const volumeSlider = document.getElementById("volume-slider");
+
     // ---- AUDIO SETUP ----
     let audioCtx = null;
     let sustainFactor = 1.0; // 0..1, default max
+    let volumeMaxGain = 10.0; // slider: 1..10
 
     function ensureAudioCtx() {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -411,9 +490,13 @@
       sustainValueLabel.textContent = labelForSustain(sustainFactor);
     });
 
+    // Volume slider: controls maximum gain from 1..10
+    volumeSlider.addEventListener("input", () => {
+      volumeMaxGain = parseFloat(volumeSlider.value);
+    });
+
     // One pure sine note, loud as we can go without adding overtones.
-    // velocity 0..1 -> gain 0.7..1.0
-    // visualDir: "left" | "right" | "up" | "down" | null
+    // velocity 0..1 -> gain from 1..volumeMaxGain
     function playBell(note, velocity = 1, visualDir = null) {
       if (!note) return;
       ensureAudioCtx();
@@ -430,21 +513,18 @@
       const gain = audioCtx.createGain();
 
       osc.type = "sine";
-      // Make sure there are no stale scheduled values before setting frequency
       osc.frequency.cancelScheduledValues(now);
-      // One octave up for a clearer bell feel, constant for whole sustain
-      osc.frequency.setValueAtTime(baseFreq * 2, now);
+      osc.frequency.setValueAtTime(baseFreq * 2, now); // one octave up
 
       const vel = Math.min(Math.max(velocity, 0), 1);
-      const minVol = 0.7;
-      const maxVol = 25.0;
+      const minVol = 1.0;
+      const maxVol = volumeMaxGain; // slider-controlled
       const gainValue = minVol + vel * (maxVol - minVol);
 
       gain.gain.setValueAtTime(gainValue, now);
 
-      // Sustain: min ≈ old 50%, max ≈ 5s
-      const MIN_SUSTAIN = 1.375; // seconds
-      const MAX_SUSTAIN = 5.0;   // seconds
+      const MIN_SUSTAIN = 1.0; // seconds
+      const MAX_SUSTAIN = 5.0; // seconds
       const sustainDuration =
         MIN_SUSTAIN + sustainFactor * (MAX_SUSTAIN - MIN_SUSTAIN);
 
@@ -460,7 +540,7 @@
       const minAngle = 10;   // degrees
       const maxAngle = 32;   // degrees
       const amp = minAngle + (maxAngle - minAngle) * vel;
-      const verticalOffset = amp; // same scale as tilt for consistency
+      const offset = amp;    // px, used for both axes
 
       let dir = visualDir;
       if (!dir) {
@@ -469,27 +549,24 @@
 
       let transform;
       if (dir === "left") {
-        // rotate left
-        transform = `translateY(0px) rotate(${-amp}deg)`;
+        transform = `translate(${-offset}px, 0px) rotate(0deg)`;
       } else if (dir === "right") {
-        transform = `translateY(0px) rotate(${amp}deg)`;
+        transform = `translate(${offset}px, 0px) rotate(0deg)`;
       } else if (dir === "up") {
-        // move up (toward you)
-        transform = `translateY(${-verticalOffset}px) rotate(0deg)`;
+        transform = `translate(0px, ${-offset}px) rotate(0deg)`;
       } else if (dir === "down") {
-        // move down (away from you)
-        transform = `translateY(${verticalOffset}px) rotate(0deg)`;
+        transform = `translate(0px, ${offset}px) rotate(0deg)`;
       } else {
-        transform = `translateY(0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * amp}deg)`;
+        transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * amp}deg)`;
       }
 
       bellRing.style.transform = transform;
       setTimeout(() => {
-        bellRing.style.transform = "translateY(0px) rotate(0deg)";
+        bellRing.style.transform = "translate(0px, 0px) rotate(0deg)";
       }, 180);
     }
 
-    // ---- MOTION HANDLING (peak + directional change, using build vector) ----
+    // ---- MOTION HANDLING (peak + directional change) ----
     let currentNote = null;
     let lastRingTime = 0;
 
@@ -502,45 +579,25 @@
     let lastMagnitude = null;
     let lastDelta = 0;              // previous signed delta
 
-    let buildAx = 0, buildAy = 0, buildAz = 0;
-    let haveBuildVector = false;
+    // Decide visual direction from *current* acceleration
+    function computeVisualDirFromAccel(ax, ay, az) {
+      const absX = Math.abs(ax);
+      const absY = Math.abs(ay);
+      const absZ = Math.abs(az);
 
-    // Lock to four cardinal visual directions based on a collapsed 2D vector:
-    // horizontal (left/right) vs combined vertical (away/up vs toward/down).
-    function computeVisualDirFromBuildVector() {
-      const ax = buildAx;
-      const ay = buildAy;
-      const az = buildAz;
+      const maxComp = Math.max(absX, absY, absZ);
 
-      // Interpret coordinates for an upright phone, screen facing you:
-      // - X: left/right
-      // - Z: forward/back
-      // - Y: up/down
-      //
-      // We combine "up + away" vs "down + toward" into one vertical axis.
-      const horiz = ax;                  // right positive, left negative
-      const vertCombined = (-az) + (-ay);
-      //  -az: away (forward) => positive, toward => negative
-      //  -ay: up => positive, down => negative
-      // So positive vertCombined ≈ up/away, negative ≈ down/toward.
-
-      const absH = Math.abs(horiz);
-      const absV = Math.abs(vertCombined);
-
-      // If there's not a clear winner, bail to a simple horizontal tilt
-      if (absH < 0.8 && absV < 0.8) {
+      if (maxComp < 0.8) {
         return Math.random() < 0.5 ? "left" : "right";
       }
 
-      if (absH > absV) {
-        // Horizontal dominates -> left/right
-        // Swing right (horiz > 0) -> bell moves left
-        return horiz > 0 ? "left" : "right";
+      if (maxComp === absX) {
+        return ax > 0 ? "right" : "left";
+      } else if (maxComp === absY) {
+        return ay > 0 ? "up" : "down";
       } else {
-        // Vertical dominates -> up/down-like
-        // Positive (up/away) -> bell down
-        // Negative (down/toward) -> bell up
-        return vertCombined > 0 ? "down" : "up";
+        // Z axis: positive out of screen (toward you)
+        return az > 0 ? "up" : "down";
       }
     }
 
@@ -568,21 +625,10 @@
       const absDelta = Math.abs(signedDelta);
       const now = performance.now();
 
-      // Capture initial build vector once per swing (first time we exceed threshold)
-      if (!haveBuildVector && absDelta > DELTA_RING_MIN) {
-        buildAx = ax;
-        buildAy = ay;
-        buildAz = az;
-        haveBuildVector = true;
-      }
-
-      // Reset swing when jerk settles
       if (absDelta < RESET_DELTA) {
         inSwing = false;
-        haveBuildVector = false;
       }
 
-      // We want a reversal: building in one direction, then switching
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
       const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
@@ -601,26 +647,18 @@
           inSwing = true;
           lastRingTime = now;
 
-          // Map peak from [DELTA_RING_MIN .. DELTA_RING_MAX] -> [0..1]
           const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
-          let t = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN); // 0..1
+          let t = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
 
-          // Steep ramp so moderate swings are already loud
           t = Math.pow(t, 0.6);
 
-          // Convert t to velocity: 0.3..1 so even min is decently loud
           const minVel = 0.3;
           const maxVel = 1.0;
           const velocity = minVel + t * (maxVel - minVel);
 
-          const visualDir = haveBuildVector
-            ? computeVisualDirFromBuildVector()
-            : (Math.random() < 0.5 ? "left" : "right");
+          const visualDir = computeVisualDirFromAccel(ax, ay, az);
 
           playBell(currentNote, velocity, visualDir);
-
-          // Reset build vector for next swing
-          haveBuildVector = false;
         }
       }
 
@@ -632,7 +670,6 @@
       lastMagnitude = null;
       lastDelta = 0;
       inSwing = false;
-      haveBuildVector = false;
       window.addEventListener("devicemotion", handleMotion);
     }
 
@@ -641,7 +678,6 @@
       lastMagnitude = null;
       lastDelta = 0;
       inSwing = false;
-      haveBuildVector = false;
     }
 
     // ---- MOTION PERMISSION (iOS) ----
@@ -654,6 +690,7 @@
           const res = await DeviceMotionEvent.requestPermission();
           return res === "granted";
         } else {
+          // Non-iOS or older: no explicit permission API
           return true;
         }
       } catch (err) {
@@ -665,7 +702,16 @@
     // ---- UI FLOW ----
     startBtn.addEventListener("click", async () => {
       await resumeAudioCtx();
-      await requestMotionPermission();
+
+      const granted = await requestMotionPermission();
+
+      if (!granted) {
+        alert(
+          "Motion access was denied. Enable Motion & Orientation in Settings → Safari (and for this site) to use the shake feature."
+        );
+        // Stay on motion screen until permission is actually granted
+        return;
+      }
 
       motionScreen.style.display = "none";
       noteScreen.style.display = "block";
@@ -678,6 +724,7 @@
       noteScreen.style.display = "none";
       playScreen.classList.add("active");
 
+      volumeWrapper.style.display = "flex";
       startMotionListening();
     }
 
@@ -686,6 +733,7 @@
       stopMotionListening();
       playScreen.classList.remove("active");
       noteScreen.style.display = "block";
+      volumeWrapper.style.display = "none";
     }
 
     backBtn.addEventListener("click", showNoteScreen);
@@ -728,7 +776,7 @@
       { passive: true }
     );
 
-    // Try to resume audio when coming back to the tab / page
+    // Try to resume audio when coming back to the tab / page / focus
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
         resumeAudioCtx();
@@ -736,6 +784,10 @@
     });
 
     window.addEventListener("pageshow", () => {
+      resumeAudioCtx();
+    });
+
+    window.addEventListener("focus", () => {
       resumeAudioCtx();
     });
   </script>
