@@ -204,9 +204,8 @@
         rgba(248,250,252,0.7) 40%,
         rgba(248,250,252,0.25) 100%);
       box-shadow: 0 12px 26px rgba(15, 23, 42, 0.45);
-      /* center pivot so left/right doesn’t sit low */
-      transform-origin: 50% 50%;
-      transform: translate(0px, 0px) rotate(0deg);
+      transform-origin: 50% 15%;
+      transform: translateY(0px) rotate(0deg);
       transition: transform 0.09s ease-out;
     }
 
@@ -404,6 +403,7 @@
       return "Long";
     }
 
+    // initialize sustain label from default slider value
     sustainValueLabel.textContent = labelForSustain(parseFloat(sustainSlider.value));
 
     sustainSlider.addEventListener("input", () => {
@@ -411,7 +411,9 @@
       sustainValueLabel.textContent = labelForSustain(sustainFactor);
     });
 
-    // Pure sine, loud, fixed pitch, with sustain
+    // One pure sine note, loud as we can go without adding overtones.
+    // velocity 0..1 -> gain 0.7..1.0
+    // visualDir: "left" | "right" | "up" | "down" | null
     function playBell(note, velocity = 1, visualDir = null) {
       if (!note) return;
       ensureAudioCtx();
@@ -428,8 +430,10 @@
       const gain = audioCtx.createGain();
 
       osc.type = "sine";
+      // Make sure there are no stale scheduled values before setting frequency
       osc.frequency.cancelScheduledValues(now);
-      osc.frequency.setValueAtTime(baseFreq * 2, now); // one octave up
+      // One octave up for a clearer bell feel, constant for whole sustain
+      osc.frequency.setValueAtTime(baseFreq * 2, now);
 
       const vel = Math.min(Math.max(velocity, 0), 1);
       const minVol = 1.0;
@@ -438,8 +442,9 @@
 
       gain.gain.setValueAtTime(gainValue, now);
 
-      const MIN_SUSTAIN = 1.0;
-      const MAX_SUSTAIN = 5.0;
+      // Sustain: min ≈ old 50%, max ≈ 5s
+      const MIN_SUSTAIN = 1.0; // seconds
+      const MAX_SUSTAIN = 5.0;   // seconds
       const sustainDuration =
         MIN_SUSTAIN + sustainFactor * (MAX_SUSTAIN - MIN_SUSTAIN);
 
@@ -451,47 +456,50 @@
       osc.start(now);
       osc.stop(now + sustainDuration + 0.1);
 
-      // ---- Visual bell animation (4 directions) ----
+      // ---- Visual bell animation ----
       const minAngle = 10;   // degrees
       const maxAngle = 32;   // degrees
       const amp = minAngle + (maxAngle - minAngle) * vel;
-      const offset = amp;    // px
+      const verticalOffset = amp; // same scale as tilt for consistency
 
-      let dir = visualDir || (Math.random() < 0.5 ? "left" : "right");
+      let dir = visualDir;
+      if (!dir) {
+        dir = Math.random() < 0.5 ? "left" : "right";
+      }
+
       let transform;
-
       if (dir === "left") {
-        transform = `translate(0px, 0px) rotate(${-amp}deg)`;
+        transform = `translateY(0px) rotate(${-amp}deg)`;
       } else if (dir === "right") {
-        transform = `translate(0px, 0px) rotate(${amp}deg)`;
+        transform = `translateY(0px) rotate(${amp}deg)`;
       } else if (dir === "up") {
-        transform = `translate(0px, ${-offset}px) rotate(0deg)`;
+        transform = `translateY(${-verticalOffset}px) rotate(0deg)`;
       } else if (dir === "down") {
-        transform = `translate(0px, ${offset}px) rotate(0deg)`;
+        transform = `translateY(${verticalOffset}px) rotate(0deg)`;
       } else {
-        transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * amp}deg)`;
+        transform = `translateY(0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * amp}deg)`;
       }
 
       bellRing.style.transform = transform;
       setTimeout(() => {
-        bellRing.style.transform = "translate(0px, 0px) rotate(0deg)";
+        bellRing.style.transform = "translateY(0px) rotate(0deg)";
       }, 180);
     }
 
-    // ---- MOTION HANDLING (jerk reversal) ----
+    // ---- MOTION HANDLING (peak + directional change) ----
     let currentNote = null;
     let lastRingTime = 0;
 
-    const MIN_INTERVAL   = 200;   // ms between rings
-    const DELTA_RING_MIN = 5.0;   // minimum jerk threshold
-    const DELTA_RING_MAX = 10.0;  // strong swing = full volume
-    const RESET_DELTA    = 1.5;   // below this, swing ends
+    const MIN_INTERVAL     = 200;   // ms between rings
+    const DELTA_RING_MIN   = 5.0;   // minimum threshold
+    const DELTA_RING_MAX   = 10.0;  // strong swing = full volume
+    const RESET_DELTA      = 1.5;   // below this, swing ends
 
     let inSwing = false;
     let lastMagnitude = null;
-    let lastDelta = 0;
+    let lastDelta = 0;              // previous signed delta
 
-    // Choose 1 of 4 directions from current accel
+    // Decide visual direction from *current* acceleration
     function computeVisualDirFromAccel(ax, ay, az) {
       const absX = Math.abs(ax);
       const absY = Math.abs(ay);
@@ -499,21 +507,21 @@
 
       const maxComp = Math.max(absX, absY, absZ);
 
-      // If everything's tiny / noisy, default to horizontal
+      // If everything is tiny / noisy, just fall back
       if (maxComp < 0.8) {
         return Math.random() < 0.5 ? "left" : "right";
       }
 
       if (maxComp === absX) {
-        // X axis: side-to-side
+        // X axis: screen plane, positive to the right
         return ax > 0 ? "right" : "left";
-      } else if (maxComp === absZ) {
-        // Z axis: toward/away
-        // positive (toward) -> up, negative (away) -> down
-        return az > 0 ? "up" : "down";
-      } else {
-        // Y axis: up/down
+      } else if (maxComp === absY) {
+        // Y axis: screen plane, positive towards the top
         return ay > 0 ? "up" : "down";
+      } else {
+        // Z axis: perpendicular to screen, positive out of screen (toward you)
+        // Map toward you to "up", away from you to "down"
+        return az > 0 ? "up" : "down";
       }
     }
 
@@ -541,12 +549,12 @@
       const absDelta = Math.abs(signedDelta);
       const now = performance.now();
 
-      // Reset swing when motion calms down
+      // Reset swing when jerk settles
       if (absDelta < RESET_DELTA) {
         inSwing = false;
       }
 
-      // Detect jerk reversal (direction change)
+      // Look for a reversal in jerk to mimic "swing then catch"
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
       const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
@@ -567,15 +575,17 @@
 
           // Map peak from [DELTA_RING_MIN .. DELTA_RING_MAX] -> [0..1]
           const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
-          let t = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
+          let t = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN); // 0..1
 
-          // Make mid swings already pretty loud
+          // Steep ramp so moderate swings are already loud
           t = Math.pow(t, 0.6);
 
+          // Convert t to velocity: 0.3..1 so even min is decently loud
           const minVel = 0.3;
           const maxVel = 1.0;
           const velocity = minVel + t * (maxVel - minVel);
 
+          // Visual direction is based on the *current* acceleration vector
           const visualDir = computeVisualDirFromAccel(ax, ay, az);
 
           playBell(currentNote, velocity, visualDir);
@@ -646,7 +656,7 @@
 
     backBtn.addEventListener("click", showNoteScreen);
 
-    // Tap note or bell to ring (full loudness)
+    // Tap note text or bell to ring (full loudness, random visual dir)
     playNoteLabel.addEventListener("click", () => {
       if (currentNote) playBell(currentNote, 1, null);
     });
