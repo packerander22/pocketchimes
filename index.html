@@ -548,7 +548,7 @@
         MIN_SUSTAIN + sustainFactor * (MAX_SUSTAIN - MIN_SUSTAIN);
     
       // VERY quiet tail relative to the hit
-      const sustainLevel = baseGain * 0.05; // 10% of the hit
+      const sustainLevel = baseGain * 1.0; // 10% of the hit
     
       // 1) Instant strike at full baseGain
       gain.gain.setValueAtTime(baseGain, now);
