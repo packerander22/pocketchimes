@@ -433,7 +433,7 @@
 
       const vel = Math.min(Math.max(velocity, 0), 1);
       const minVol = 0.7;
-      const maxVol = 2.0;
+      const maxVol = 5.0;
       const gainValue = minVol + vel * (maxVol - minVol);
 
       gain.gain.setValueAtTime(gainValue, now);
