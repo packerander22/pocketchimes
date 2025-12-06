@@ -4,6 +4,31 @@
   <meta charset="UTF-8" />
   <title>PocketChimes</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- PWA & icons -->
+  <meta name="theme-color" content="#111827" />
+
+  <!-- Standard favicons -->
+  <link rel="icon" type="image/png" sizes="16x16" href="favicons/favicon_16_transparent.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicons/favicon_32_transparent.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="favicons/favicon_48_transparent.png">
+  <link rel="icon" type="image/png" sizes="64x64" href="favicons/favicon_64_transparent.png">
+  <link rel="icon" type="image/png" sizes="180x180" href="favicons/favicon_180_transparent.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="favicons/favicon_192_transparent.png">
+  <link rel="icon" type="image/png" sizes="256x256" href="favicons/favicon_256_transparent.png">
+  <link rel="icon" type="image/png" sizes="384x384" href="favicons/favicon_384_transparent.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="favicons/favicon_512_transparent.png">
+  <link rel="icon" type="image/png" sizes="2048x2048" href="favicons/favicon_2048_transparent.png">
+
+  <!-- iOS home-screen icon -->
+  <link rel="apple-touch-icon" href="favicons/favicon_180_transparent.png">
+
+  <!-- Maskable icon for Android -->
+  <link rel="mask-icon" href="favicons/favicon_maskable_512_transparent.png" color="#ffffff">
+
+  <!-- Web App Manifest -->
+  <link rel="manifest" href="favicons/site.webmanifest">
+
   <style>
     :root {
       --bg: #111827;
@@ -750,6 +775,15 @@
     window.addEventListener("focus", () => {
       resetAudioContextOnReturn();
     });
+  </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker
+          .register("/sw.js")
+          .catch(err => console.error("SW registration failed:", err));
+      });
+    }
   </script>
 </body>
 </html>
