@@ -1,0 +1,24 @@
+{
+  "name": "PocketChimes",
+  "short_name": "PocketChimes",
+  "description": "Swing your phone like a handbell and play chime notes C5–C7 with motion control.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#111827",
+  "background_color": "#111827",
+  "icons": [
+    { "src": "favicons/favicon_16_transparent.png",   "sizes": "16x16",   "type": "image/png" },
+    { "src": "favicons/favicon_32_transparent.png",   "sizes": "32x32",   "type": "image/png" },
+    { "src": "favicons/favicon_48_transparent.png",   "sizes": "48x48",   "type": "image/png" },
+    { "src": "favicons/favicon_64_transparent.png",   "sizes": "64x64",   "type": "image/png" },
+    { "src": "favicons/favicon_180_transparent.png",  "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "favicons/favicon_192_transparent.png",  "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "favicons/favicon_256_transparent.png",  "sizes": "256x256", "type": "image/png", "purpose": "any" },
+    { "src": "favicons/favicon_384_transparent.png",  "sizes": "384x384", "type": "image/png", "purpose": "any" },
+    { "src": "favicons/favicon_512_transparent.png",  "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "favicons/favicon_maskable_512_transparent.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "favicons/favicon_2048_transparent.png", "sizes": "2048x2048", "type": "image/png", "purpose": "any" }
+  ]
+}
