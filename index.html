@@ -5,33 +5,21 @@
   <title>PocketChimes</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- PWA & icons -->
+  <!-- PWA & theme color -->
   <meta name="theme-color" content="#111827" />
 
-  <!-- Standard favicons -->
-  <link rel="icon" type="image/png" sizes="16x16" href="favicons/favicon_16_transparent.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicons/favicon_32_transparent.png">
-  <link rel="icon" type="image/png" sizes="48x48" href="favicons/favicon_48_transparent.png">
-  <link rel="icon" type="image/png" sizes="64x64" href="favicons/favicon_64_transparent.png">
-  <link rel="icon" type="image/png" sizes="180x180" href="favicons/favicon_180_transparent.png">
-  <link rel="icon" type="image/png" sizes="192x192" href="favicons/favicon_192_transparent.png">
-  <link rel="icon" type="image/png" sizes="256x256" href="favicons/favicon_256_transparent.png">
-  <link rel="icon" type="image/png" sizes="384x384" href="favicons/favicon_384_transparent.png">
-  <link rel="icon" type="image/png" sizes="512x512" href="favicons/favicon_512_transparent.png">
-  <link rel="icon" type="image/png" sizes="2048x2048" href="favicons/favicon_2048_transparent.png">
+  <!-- Tab favicons (desktop/mobile) -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicons/favicon_32_transparent.png?v=1">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicons/favicon_16_transparent.png?v=1">
 
-  <!-- Generic / legacy favicon hooks -->
-  <link rel="icon" href="favicons/favicon_192_transparent.png" type="image/png">
-  <link rel="shortcut icon" href="favicons/favicon_192_transparent.png" type="image/png">
+  <!-- Generic / legacy favicon hook -->
+  <link rel="shortcut icon" href="/favicons/favicon_32_transparent.png?v=1" type="image/png">
 
-  <!-- iOS home-screen icon -->
-  <link rel="apple-touch-icon" href="favicons/favicon_180_transparent.png">
-
-  <!-- Maskable icon for Android -->
-  <link rel="mask-icon" href="favicons/favicon_maskable_512_transparent.png" color="#ffffff">
+  <!-- iOS home-screen icon (your known-good URL) -->
+  <link rel="apple-touch-icon" href="https://pocketchimes.com/favicons/favicon_180_transparent.png?v=1">
 
   <!-- Web App Manifest -->
-  <link rel="manifest" href="favicons/site.webmanifest?v=3">
+  <link rel="manifest" href="/favicons/site.webmanifest?v=4">
 
   <style>
     :root {
@@ -68,10 +56,10 @@
       top: 1.1rem;
       left: 50%;
       transform: translateX(-50%);
-      width: 96px;         /* tweak as you like */
+      width: 96px;
       height: auto;
       z-index: 20;
-      pointer-events: none; /* taps go through on mobile */
+      pointer-events: none;
     }
 
     .app {
@@ -274,7 +262,7 @@
       margin-bottom: 0.8rem;
     }
 
-    /* Volume slider (bottom center, where sustain used to be) */
+    /* Volume slider (bottom center) */
     .volume-wrapper {
       width: 100%;
       max-width: 220px;
@@ -316,7 +304,7 @@
   <!-- Global logo that sits above both the motion + tiles screens -->
   <img
     class="global-logo"
-    src="favicons/favicon_512_transparent.png"
+    src="/favicons/favicon_512_transparent.png"
     alt="PocketChimes Logo"
   />
 
@@ -391,9 +379,6 @@
 
   <script>
     // ----- NOTE DEFINITIONS: chromatic C5–B6, plus C7 only -----
-    // Colors tuned to your scheme:
-    // C = red, D = orange, E = yellow, F = green,
-    // G = teal, A = blue, B = purple
     const PITCHES = [
       { name: "C",  color: "#FF3B30" }, // red
       { name: "C#", color: "#FF2D92" }, // hot pink
@@ -406,17 +391,17 @@
       { name: "G#", color: "#00B0FF" }, // cyan/blue-teal
       { name: "A",  color: "#007AFF" }, // blue
       { name: "A#", color: "#AF52DE" }, // magenta-purple
-      { name: "B",  color: "#5856D6" }, // purple
+      { name: "B",  color: "#5856D6" }  // purple
     ];
 
     const OCTAVES = [5, 6, 7];
-
     const NOTES = [];
+
     OCTAVES.forEach((oct) => {
       PITCHES.forEach((p) => {
         if (oct === 7 && p.name !== "C") return; // only C7 in octave 7
         const id = `${p.name}${oct}`;
-        const fileName = `${p.name}${oct}.wav`;   // e.g. "C#5.wav"
+        const fileName = `${p.name}${oct}.wav`;
         const encodedFile = encodeURIComponent(fileName);
 
         NOTES.push({
@@ -447,7 +432,7 @@
     // ---- AUDIO (sample based) ----
     let audioCtx = null;
     let volumeMaxGain = 1.0;
-    const noteBuffers = new Map(); // id -> AudioBuffer
+    const noteBuffers = new Map();
 
     function ensureAudioCtx() {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -509,8 +494,7 @@
       volumeValueLabel.textContent = volumeSlider.value;
     });
 
-    // Play bell sample:
-    // -> ALWAYS at full volumeMaxGain (intensity only affects visuals)
+    // Play bell sample
     async function playBell(note, intensity = 1, visualDir = null) {
       if (!note) return;
       ensureAudioCtx();
@@ -534,7 +518,6 @@
       gain.connect(audioCtx.destination);
       src.start(now);
 
-      // Visual bell motion — intensity only
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
@@ -565,9 +548,9 @@
     let currentNote = null;
     let lastRingTime = 0;
 
-    const MIN_INTERVAL   = 200;   // ms between rings
-    const DELTA_RING_MIN = 3.0;   // threshold (unchanged)
-    const DELTA_RING_MAX = 10.0;  // for visual intensity only
+    const MIN_INTERVAL   = 200;
+    const DELTA_RING_MIN = 3.0;
+    const DELTA_RING_MAX = 10.0;
     const RESET_DELTA    = 1.5;
 
     let inSwing = false;
@@ -587,7 +570,6 @@
       }
 
       if (maxComp === absX) {
-        // jerk right => bell left, and vice versa
         return jx > 0 ? "left" : "right";
       } else if (maxComp === absY) {
         return jy > 0 ? "up" : "down";
