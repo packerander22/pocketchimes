@@ -2,29 +2,38 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-<title>PocketChimes</title>
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0,
-               maximum-scale=1.0, user-scalable=no" />
+  <title>PocketChimes</title>
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+  />
 
-<!-- PWA & theme color -->
-<meta name="theme-color" content="#111827" />
+  <!-- PWA & theme color -->
+  <meta name="theme-color" content="#111827" />
 
-<!-- Tab favicons (desktop/mobile) -->
-<link rel="icon" type="image/png" sizes="32x32" href="/favicons/favicon_32_transparent.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/favicons/favicon_16_transparent.png">
+  <!-- Tab favicons (desktop/mobile) -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicons/favicon_32_transparent.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicons/favicon_16_transparent.png">
 
-<!-- Generic / legacy favicon hook -->
-<link rel="shortcut icon" href="/favicons/favicon_32_transparent.png" type="image/png">
+  <!-- Generic / legacy favicon hook -->
+  <link rel="shortcut icon" href="/favicons/favicon_32_transparent.png" type="image/png">
 
-<!-- iOS home-screen icon -->
-<link rel="apple-touch-icon" href="https://pocketchimes.com/favicons/favicon_180_transparent.png">
+  <!-- iOS home-screen icon -->
+  <link rel="apple-touch-icon" href="https://pocketchimes.com/favicons/favicon_180_transparent.png">
 
-<!-- Web App Manifest -->
-<link rel="manifest" href="/favicons/site.webmanifest">
+  <!-- Web App Manifest -->
+  <link rel="manifest" href="/favicons/site.webmanifest">
 
-  
   <style>
+    html, body {
+      overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;   /* disable scroll & pinch on touch devices */
+      position: fixed;
+      width: 100%;
+      height: 100%;
+    }
+
     :root {
       --bg: #111827;
       --text: #f9fafb;
@@ -403,13 +412,27 @@
     OCTAVES.forEach((oct) => {
       PITCHES.forEach((p) => {
         if (oct === 7 && p.name !== "C") return; // only C7 in octave 7
+
         const id = `${p.name}${oct}`;
         const fileName = `${p.name}${oct}.wav`;
         const encodedFile = encodeURIComponent(fileName);
 
+        // Label rules:
+        //  - 5th octave: "C (Low)", "C# (Low)", etc.
+        //  - 6th octave: "C", "C#", etc. (no number)
+        //  - C7: "C (High)"
+        let label;
+        if (oct === 5) {
+          label = `${p.name} (Low)`;
+        } else if (oct === 6) {
+          label = p.name;
+        } else if (oct === 7 && p.name === "C") {
+          label = "C (High)";
+        }
+
         NOTES.push({
-          id,
-          label: id,
+          id,          // used for lookup and buffer keys
+          label,       // used for tile text + play-note label
           file: `audio/${encodedFile}`,
           color: p.color,
         });
@@ -436,6 +459,9 @@
     let audioCtx = null;
     let volumeMaxGain = 1.0;
     const noteBuffers = new Map();
+
+    let allNotesPreloaded = false;
+    let preloadAllNotesPromise = null;
 
     function ensureAudioCtx() {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -474,6 +500,25 @@
       const buf  = await audioCtx.decodeAudioData(arr);
       noteBuffers.set(note.id, buf);
       return buf;
+    }
+
+    // Preload ALL note buffers so first ring is instant
+    function preloadAllNotes() {
+      if (preloadAllNotesPromise) return preloadAllNotesPromise;
+
+      preloadAllNotesPromise = Promise.all(
+        NOTES.map(n =>
+          loadNoteBuffer(n).catch(err => {
+            console.warn("Failed to preload note", n.id, err);
+            return null;
+          })
+        )
+      ).then(() => {
+        allNotesPreloaded = true;
+        console.log("All notes preloaded");
+      });
+
+      return preloadAllNotesPromise;
     }
 
     // Headphone warning
@@ -697,6 +742,9 @@
         return;
       }
 
+      // Start preloading all notes once user has interacted
+      preloadAllNotes();
+
       motionScreen.style.display = "none";
       noteScreen.style.display   = "block";
       showHeadphoneWarningOnce();
@@ -740,6 +788,8 @@
 
         btn.addEventListener("click", async () => {
           await resumeAudioCtx();
+          // Ensure this note's buffer is ready (fast if preloaded)
+          await loadNoteBuffer(n);
           showPlayScreen(n);
           playBell(n, 1, null);
         });
@@ -755,6 +805,9 @@
       const needsExplicitPermission =
         typeof DeviceMotionEvent !== "undefined" &&
         typeof DeviceMotionEvent.requestPermission === "function";
+
+      // Preload notes as soon as possible on platforms that allow it
+      preloadAllNotes();
 
       if (!needsExplicitPermission) {
         motionScreen.style.display = "none";
