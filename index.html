@@ -91,7 +91,9 @@
       padding: 3rem 1.2rem 2.5rem; /* extra top padding so card doesn't clash with logo */
     }
 
-    .card {
+    /* Shared card styling for intro + note cards */
+    .card,
+    .note-card {
       background: radial-gradient(circle at top left, #1f2937 0, #020617 70%);
       border-radius: 1.75rem;
       border: 1px solid #020617;
@@ -133,16 +135,6 @@
     }
 
     /* NOTE SELECTION SCREEN */
-
-    .note-card {
-      background: radial-gradient(circle at top left, #1f2937 0, #020617 70%);
-      border-radius: 1.75rem;
-      border: 1px solid #020617;
-      box-shadow: var(--shadow-soft);
-      padding: 1.4rem 1.5rem 1.6rem;
-      backdrop-filter: blur(16px);
-      text-align: center;
-    }
 
     .note-title {
       font-size: 1.15rem;
@@ -327,25 +319,25 @@
   <img
     class="global-logo"
     src="/favicons/favicon_512_transparent.png"
-    alt="PocketChimes Logo"
+    alt="PocketChimes bell logo"
   />
 
   <!-- MOTION PERMISSION SCREEN -->
-  <div class="app" id="motion-screen">
+  <div class="app" id="motion-screen" role="main">
     <div class="card">
       <div class="title">PocketChimes</div>
       <p class="subtitle">
         This app uses your phone’s motion sensors so you can swing it like a handbell.
         On iPhone, you’ll be asked to allow motion access.
       </p>
-      <button class="primary-btn" id="start-btn">
+      <button class="primary-btn" id="start-btn" type="button">
         Enable motion & start
       </button>
     </div>
   </div>
 
   <!-- NOTE SELECTION SCREEN -->
-  <div class="app" id="note-screen" style="display:none;">
+  <div class="app" id="note-screen" style="display:none;" role="main">
     <div class="note-card">
       <div class="note-title">Choose your note</div>
       <div class="note-subtitle">
@@ -363,8 +355,8 @@
   </div>
 
   <!-- PLAY SCREEN -->
-  <div class="play-screen" id="play-screen">
-    <button class="back-btn" id="back-btn">
+  <div class="play-screen" id="play-screen" role="main">
+    <button class="back-btn" id="back-btn" type="button">
       ← Notes
     </button>
 
@@ -372,7 +364,13 @@
       C5
     </div>
 
-    <div class="bell-visual" id="bell-visual">
+    <div
+      class="bell-visual"
+      id="bell-visual"
+      role="button"
+      aria-label="Tap to ring the bell"
+      tabindex="0"
+    >
       <div class="bell-ring" id="bell-ring"></div>
       <div class="bell-clapper"></div>
     </div>
@@ -384,7 +382,7 @@
 
     <div class="volume-wrapper" id="volume-wrapper">
       <div class="volume-label-row">
-        <span>Gain (might distort audio if > 1)</span>
+        <span>Gain (might distort audio if &gt; 1)</span>
         <span id="volume-value-label">1</span>
       </div>
       <input
@@ -400,6 +398,33 @@
   </div>
 
   <script>
+    // ----- SCREEN WAKE LOCK: keep device awake while bell is ringing -----
+    // Best-effort only: many browsers (especially iOS Safari) ignore this.
+    let wakeLock = null;
+    const wakeLockSupported = "wakeLock" in navigator;
+
+    async function requestWakeLock() {
+      if (!wakeLockSupported) return;
+      try {
+        wakeLock = await navigator.wakeLock.request("screen");
+        console.log("Wake lock is active");
+        wakeLock.addEventListener("release", () => {
+          console.log("Wake lock was released");
+          wakeLock = null;
+        });
+      } catch (err) {
+        console.warn("Wake lock error:", err.name, err.message);
+      }
+    }
+
+    // Called every time the bell rings (motion or tap)
+    function ensureWakeLock() {
+      if (!wakeLockSupported) return;
+      if (!wakeLock) {
+        requestWakeLock();
+      }
+    }
+
     // ----- NOTE DEFINITIONS: chromatic C5–B6, plus C7 only -----
     const PITCHES = [
       { name: "C",  color: "#FF3B30" }, // red
@@ -494,6 +519,7 @@
     }
 
     function resetAudioContextOnReturn() {
+      // Close and recreate AudioContext to avoid iOS weirdness on return.
       if (audioCtx && audioCtx.state !== "closed") {
         audioCtx.close().catch(() => {});
       }
@@ -539,8 +565,7 @@
       alert(
         "Important: Please DO NOT use headphones when using this app — the bells can be EXTREMELY loud!\n" +
         "You're probably thinking to yourself, \"Oh it can't be *that* loud, can it?\"\n" +
-        "That's what this poor girl named Paige thought.\n" +
-        "She's deaf now.\n\n" +
+        "Yes it can.\n\n" +
         "Also make sure your ringer isn't muted."
       );
     }
@@ -555,6 +580,10 @@
     // Play bell sample
     async function playBell(note, intensity = 1, visualDir = null) {
       if (!note) return;
+
+      // Best-effort: request wake lock when the bell rings
+      ensureWakeLock();
+
       ensureAudioCtx();
       if (!audioCtx) return;
 
@@ -606,10 +635,11 @@
     let currentNote = null;
     let lastRingTime = 0;
 
-    const MIN_INTERVAL   = 200;
-    const DELTA_RING_MIN = 3.0;
-    const DELTA_RING_MAX = 10.0;
-    const RESET_DELTA    = 1.5;
+    // Swing detection constants (tuned by feel)
+    const MIN_INTERVAL   = 200;  // min time between rings (ms)
+    const DELTA_RING_MIN = 3.0;  // lower bound of “strong enough” swing
+    const DELTA_RING_MAX = 10.0; // upper bound for intensity scaling
+    const RESET_DELTA    = 1.5;  // under this = swing finished
 
     let inSwing = false;
     let lastMagnitude = null;
@@ -788,11 +818,20 @@
       if (currentNote) playBell(currentNote, 1, null);
     });
 
+    // Keyboard support for bell visual (accessibility)
+    bellVisual.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (currentNote) playBell(currentNote, 1, null);
+      }
+    });
+
     // ---- INIT NOTE BUTTONS ----
     function initNoteButtons() {
       NOTES.forEach((n) => {
         const btn = document.createElement("button");
         btn.className = "note-btn";
+        btn.type = "button";
         btn.style.background = n.color;
         btn.textContent = n.label;
 
@@ -834,6 +873,7 @@
       { passive: true }
     );
 
+    // Audio reset on visibility changes / navigation events
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
         resetAudioContextOnReturn();
