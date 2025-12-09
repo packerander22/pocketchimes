@@ -15,7 +15,7 @@
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
   
-    gtag('config', 'G-3G2QH25N85');
+    gtag('config', 'G-3G2H25N85');
   </script>
   
   <!-- PWA & theme color -->
@@ -341,7 +341,7 @@
     <div class="note-card">
       <div class="note-title">Choose your note</div>
       <div class="note-subtitle">
-        Full chromatic C5–C7 (top note C7). Each note uses the bell color palette.
+        Full chromatic C5–B7 (top note B7). Each note uses the bell color palette.
       </div>
 
       <div class="note-grid" id="note-grid">
@@ -398,7 +398,7 @@
   </div>
 
   <script>
-    // ----- SCREEN WAKE LOCK: keep device awake while bell is ringing -----
+    // ----- SCREEN WAKE LOCK: keep device awake while bell is ringing (motion only) -----
     // Best-effort only: many browsers (especially iOS Safari) ignore this.
     let wakeLock = null;
     const wakeLockSupported = "wakeLock" in navigator;
@@ -417,7 +417,7 @@
       }
     }
 
-    // Called every time the bell rings (motion or tap)
+    // Called only for motion-triggered rings (not taps)
     function ensureWakeLock() {
       if (!wakeLockSupported) return;
       if (!wakeLock) {
@@ -425,7 +425,7 @@
       }
     }
 
-    // ----- NOTE DEFINITIONS: chromatic C5–B6, plus C7 only -----
+    // ----- NOTE DEFINITIONS: chromatic C5–B7 -----
     const PITCHES = [
       { name: "C",  color: "#FF3B30" }, // red
       { name: "C#", color: "#FF2D92" }, // hot pink
@@ -446,8 +446,7 @@
 
     OCTAVES.forEach((oct) => {
       PITCHES.forEach((p) => {
-        if (oct === 7 && p.name !== "C") return; // only C7 in octave 7
-
+        // Now include full chromatic 7th octave up to B7
         const id = `${p.name}${oct}`;
         const fileName = `${p.name}${oct}.wav`;
         const encodedFile = encodeURIComponent(fileName);
@@ -455,14 +454,14 @@
         // Label rules:
         //  - 5th octave: "C (Low)", "C# (Low)", etc.
         //  - 6th octave: "C", "C#", etc. (no number)
-        //  - C7: "C (High)"
+        //  - 7th octave: "C (High)", "C# (High)", ... "B (High)"
         let label;
         if (oct === 5) {
           label = `${p.name} (Low)`;
         } else if (oct === 6) {
           label = p.name;
-        } else if (oct === 7 && p.name === "C") {
-          label = "C (High)";
+        } else if (oct === 7) {
+          label = `${p.name} (High)`;
         }
 
         NOTES.push({
@@ -581,8 +580,7 @@
     async function playBell(note, intensity = 1, visualDir = null) {
       if (!note) return;
 
-      // Best-effort: request wake lock when the bell rings
-      ensureWakeLock();
+      // No wakeLock call here anymore; taps shouldn't request it.
 
       ensureAudioCtx();
       if (!audioCtx) return;
@@ -725,6 +723,9 @@
             (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
 
           const visualDir = computeVisualDirFromJerk(jx, jy, jz);
+
+          // Only motion-triggered rings request wake lock
+          ensureWakeLock();
           playBell(currentNote, intensity, visualDir);
         }
       }
