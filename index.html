@@ -579,38 +579,50 @@
     // Play bell sample
     async function playBell(note, intensity = 1, visualDir = null) {
       if (!note) return;
-
-      // No wakeLock call here anymore; taps shouldn't request it.
-
+    
       ensureAudioCtx();
       if (!audioCtx) return;
-
+    
       if (audioCtx.state === "suspended") {
         await audioCtx.resume();
       }
-
+    
       const buffer = await loadNoteBuffer(note);
       if (!buffer) return;
-
+    
       const now = audioCtx.currentTime;
       const src = audioCtx.createBufferSource();
       src.buffer = buffer;
-
+    
       const gain = audioCtx.createGain();
-      gain.gain.setValueAtTime(volumeMaxGain, now);
-
       src.connect(gain);
       gain.connect(audioCtx.destination);
+    
+      const duration = buffer.duration;
+      const safeDuration = Math.max(duration, 0.05); // guard against super-short buffers
+      const fadeOutTime = 0.02;                      // 20 ms fade
+    
+      // Start at current volume
+      gain.gain.setValueAtTime(volumeMaxGain, now);
+    
+      // Hold until just before the end, then fade to (almost) zero
+      const fadeStart = now + safeDuration - fadeOutTime;
+      gain.gain.setValueAtTime(volumeMaxGain, fadeStart);
+      gain.gain.linearRampToValueAtTime(0.0001, now + safeDuration);
+    
+      // Start + stop the source
       src.start(now);
-
+      src.stop(now + safeDuration);
+    
+      // --- visual wiggle (unchanged) ---
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
       const offset = minOffset + (maxOffset - minOffset) * t;
-
+    
       let dir = visualDir || (Math.random() < 0.5 ? "left" : "right");
       let transform;
-
+    
       if (dir === "left") {
         transform = `translate(${-offset}px, 0px) rotate(0deg)`;
       } else if (dir === "right") {
@@ -622,12 +634,13 @@
       } else {
         transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * offset}deg)`;
       }
-
+    
       bellRing.style.transform = transform;
       setTimeout(() => {
         bellRing.style.transform = "translate(0px, 0px) rotate(0deg)";
       }, 180);
     }
+    
 
     // ---- MOTION HANDLING ----
     let currentNote = null;
