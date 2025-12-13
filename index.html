@@ -3,10 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>PocketChimes</title>
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-3G2QH25N85"></script>
@@ -17,10 +14,8 @@
     gtag('config', 'G-3G2H25N85');
   </script>
 
-  <!-- PWA & theme color -->
   <meta name="theme-color" content="#111827" />
 
-  <!-- Tab favicons (desktop/mobile) -->
   <link rel="icon" type="image/png" sizes="32x32" href="/favicons/favicon_32_transparent.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicons/favicon_16_transparent.png">
   <link rel="shortcut icon" href="/favicons/favicon_32_transparent.png" type="image/png">
@@ -42,16 +37,12 @@
       --text: #f9fafb;
       --card: #1f2937;
       --shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.35);
-      --radius-xl: 1.5rem;
       --radius-full: 999px;
-      --font-main: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
-        "Segoe UI", sans-serif;
+      --font-main: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
 
-      /* minimal slider colors */
       --ui-text: rgba(2, 6, 23, 0.92);
       --ui-subtext: rgba(2, 6, 23, 0.62);
       --track: rgba(2, 6, 23, 0.22);
-      --track-fill: rgba(2, 6, 23, 0.35);
       --thumb: rgba(2, 6, 23, 0.92);
       --thumb-ring: rgba(248, 250, 252, 0.35);
     }
@@ -188,6 +179,7 @@
       text-align: center;
       color: #020617;
       padding: 1.2rem;
+      padding-bottom: calc(1.2rem + 106px); /* reserve space for sustain + hint */
     }
     .play-screen.active { display: flex; }
 
@@ -307,15 +299,21 @@
       box-shadow: 0 10px 22px rgba(0,0,0,0.22), 0 0 0 8px var(--thumb-ring);
     }
 
-    /* Sustain: minimal bottom row, no box */
+    /* Sustain: fixed bottom, minimal, out of the way */
     .sustain-row{
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: calc(10px + env(safe-area-inset-bottom));
       width: min(360px, 92vw);
-      display: flex;
+      display: none;
       flex-direction: column;
-      gap: 0.4rem;
-      margin-top: 0.55rem;
-      z-index: 35;
+      gap: 0.25rem;
+      z-index: 55;
+      pointer-events: auto;
+      padding: 0.1rem 0.2rem;
     }
+    .sustain-row.active{ display: flex; }
 
     .sustain-head{
       display: flex;
@@ -324,42 +322,48 @@
       color: var(--ui-text);
       text-shadow: 0 1px 2px rgba(0,0,0,0.18);
     }
-
     .sustain-title{
-      font-size: 0.95rem;
+      font-size: 0.92rem;
       font-weight: 900;
       letter-spacing: 0.01em;
     }
-
     .sustain-value{
-      font-size: 1.0rem;
+      font-size: 0.98rem;
       font-weight: 950;
       min-width: 2.2rem;
       text-align: right;
     }
-
     .sustain-sub{
-      font-size: 0.78rem;
+      font-size: 0.76rem;
       color: var(--ui-subtext);
-      text-shadow: 0 1px 2px rgba(0,0,0,0.15);
-      margin-top: -0.1rem;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.12);
+      margin-top: -0.05rem;
     }
-
     .sustain-slider{
       width: 100%;
-      height: 44px; /* touch-friendly */
+      height: 44px;
     }
 
-    /* Gain: minimal left vertical, no box */
+    .dampen-hint {
+      text-align: center;
+      font-size: 0.78rem;
+      color: rgba(248,250,252,0.92);
+      opacity: 0.82;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.35);
+      margin-top: 0.1rem;
+      pointer-events: none;
+    }
+
+    /* Gain: left, minimal, pushed lower so it doesn't fight the bell */
     .gain-min{
       position: fixed;
       left: 0.75rem;
-      top: 50%;
+      top: 64%;
       transform: translateY(-50%);
-      z-index: 50;
+      z-index: 56;
       display: none;
       align-items: center;
-      gap: 0.45rem;
+      gap: 0.35rem;
       color: var(--ui-text);
       text-shadow: 0 1px 2px rgba(0,0,0,0.18);
       pointer-events: auto;
@@ -374,7 +378,7 @@
     .gain-value{
       font-size: 1.0rem;
       font-weight: 950;
-      margin-top: -0.15rem;
+      margin-top: -0.1rem;
     }
     .gain-hint{
       font-size: 0.72rem;
@@ -384,13 +388,12 @@
       margin-top: -0.1rem;
     }
 
-    /* rotate a normal range for consistent styling */
     .gain-slider{
       width: 240px;
       height: 44px;
       transform: rotate(-90deg);
       touch-action: none;
-      margin: 0.35rem 0;
+      margin: 0.3rem 0;
     }
 
     @media (max-width: 400px){
@@ -399,6 +402,7 @@
       .gain-slider { width: 220px; }
       .gain-min { left: 0.55rem; }
       .sustain-row { width: min(340px, 92vw); }
+      .play-screen { padding-bottom: calc(1.2rem + 102px); }
     }
   </style>
 </head>
@@ -414,9 +418,7 @@
         This app uses your phone’s motion sensors so you can swing it like a handbell.
         On iPhone, you’ll be asked to allow motion access.
       </p>
-      <button class="primary-btn" id="start-btn" type="button">
-        Enable motion & start
-      </button>
+      <button class="primary-btn" id="start-btn" type="button">Enable motion & start</button>
     </div>
   </div>
 
@@ -427,12 +429,8 @@
       <div class="note-subtitle">
         Full chromatic C5–B7 (top note B7). Each note uses the bell color palette.
       </div>
-
       <div class="note-grid" id="note-grid"></div>
-
-      <div class="note-help">
-        Swing to ring. You’ll see your note and bell on the next screen.
-      </div>
+      <div class="note-help">Swing to ring. You’ll see your note and bell on the next screen.</div>
     </div>
   </div>
 
@@ -441,16 +439,18 @@
     <div class="gain-title">Gain</div>
     <div class="gain-value" id="gain-value-label">1</div>
     <div class="gain-hint">higher can distort</div>
-    <input
-      type="range"
-      id="gain-slider"
-      class="gain-slider"
-      min="1"
-      max="10"
-      step="1"
-      value="1"
-      aria-label="Gain slider"
-    />
+    <input type="range" id="gain-slider" class="gain-slider" min="1" max="10" step="1" value="1" aria-label="Gain slider" />
+  </div>
+
+  <!-- SUSTAIN (fixed bottom, minimal) -->
+  <div class="sustain-row" id="sustain-wrapper">
+    <div class="sustain-head">
+      <div class="sustain-title">Sustain</div>
+      <div class="sustain-value" id="sustain-value-label">10</div>
+    </div>
+    <div class="sustain-sub">10 = full ring · 1 = damped</div>
+    <input type="range" id="sustain-slider" class="sustain-slider" min="1" max="10" step="1" value="10" aria-label="Sustain slider" />
+    <div class="dampen-hint">Turn face down to dampen ring</div>
   </div>
 
   <!-- PLAY SCREEN -->
@@ -459,13 +459,7 @@
 
     <div class="play-note-label" id="play-note-label">C5</div>
 
-    <div
-      class="bell-visual"
-      id="bell-visual"
-      role="button"
-      aria-label="Tap to ring the bell"
-      tabindex="0"
-    >
+    <div class="bell-visual" id="bell-visual" role="button" aria-label="Tap to ring the bell" tabindex="0">
       <div class="bell-ring" id="bell-ring"></div>
       <div class="bell-clapper"></div>
     </div>
@@ -473,25 +467,6 @@
     <div class="hint-text">
       Swing your phone like a handbell.
       Tap the note or bell if needed.
-    </div>
-
-    <!-- SUSTAIN (minimal) -->
-    <div class="sustain-row" id="sustain-wrapper">
-      <div class="sustain-head">
-        <div class="sustain-title">Sustain</div>
-        <div class="sustain-value" id="sustain-value-label">10</div>
-      </div>
-      <div class="sustain-sub">10 = full ring · 1 = damped</div>
-      <input
-        type="range"
-        id="sustain-slider"
-        class="sustain-slider"
-        min="1"
-        max="10"
-        step="1"
-        value="10"
-        aria-label="Sustain slider"
-      />
     </div>
   </div>
 
@@ -564,6 +539,7 @@
     const gainSlider     = document.getElementById("gain-slider");
     const gainValueLabel = document.getElementById("gain-value-label");
 
+    const sustainWrapper    = document.getElementById("sustain-wrapper");
     const sustainSlider     = document.getElementById("sustain-slider");
     const sustainValueLabel = document.getElementById("sustain-value-label");
 
@@ -637,48 +613,91 @@
       sustainValueLabel.textContent = sustainSlider.value;
     });
 
-    // ---- FACE DOWN DETECTION ----
-    let isFaceDown = false;
-    const FACE_DOWN_Z_THRESHOLD = 7.0;
+    // ---- Face-down detection: NO DELAY, but extremely strict + cannot trigger during motion ----
+    //  - Only while a bell is ringing
+    //  - Only when nearly perfectly screen-down (flat + upside down)
+    //  - Only when still and not inSwing
+    let faceDownTriggeredThisRingWindow = false;
+
+    const FACE_DOWN_Z_STRICT = 9.4;   // closer to +9.8 = harder
+    const FACE_DOWN_XY_MAX   = 1.0;   // flatter = harder
+    const STILL_ACCEL_MAX    = 0.20;  // must be very still
+    const STILL_JERK_MAX     = 0.15;  // additional stillness guard using delta accel
 
     const activeRings = new Set();
 
-    function updateFaceDownFromEvent(event) {
-      const accG = event.accelerationIncludingGravity;
-      if (!accG || accG.z === null) return;
+    function getAccelMag(a) {
+      if (!a) return Infinity;
+      const ax = a.x || 0, ay = a.y || 0, az = a.z || 0;
+      return Math.sqrt(ax*ax + ay*ay + az*az);
+    }
 
-      const z = accG.z || 0;
-      const nextFaceDown = z > FACE_DOWN_Z_THRESHOLD;
+    // jerk/stability helper
+    let lastAccAx = null, lastAccAy = null, lastAccAz = null;
+    function getJerkMag(acc) {
+      if (!acc) return Infinity;
+      const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
+      if (lastAccAx === null) {
+        lastAccAx = ax; lastAccAy = ay; lastAccAz = az;
+        return Infinity; // require one sample
+      }
+      const dx = ax - lastAccAx;
+      const dy = ay - lastAccAy;
+      const dz = az - lastAccAz;
+      lastAccAx = ax; lastAccAy = ay; lastAccAz = az;
+      return Math.sqrt(dx*dx + dy*dy + dz*dz);
+    }
 
-      if (!isFaceDown && nextFaceDown) {
-        isFaceDown = true;
+    function checkFaceDownStrict(event) {
+      // Only consider if something is currently ringing
+      if (activeRings.size === 0) {
+        faceDownTriggeredThisRingWindow = false;
+        lastAccAx = lastAccAy = lastAccAz = null;
+        return;
+      }
+
+      // Never trigger during swing/motion detection window
+      if (inSwing) return;
+
+      const g = event.accelerationIncludingGravity;
+      if (!g || g.z === null || g.x === null || g.y === null) return;
+
+      const gx = g.x || 0;
+      const gy = g.y || 0;
+      const gz = g.z || 0;
+
+      const nearFlatDown =
+        (gz >= FACE_DOWN_Z_STRICT) &&
+        (Math.abs(gx) <= FACE_DOWN_XY_MAX) &&
+        (Math.abs(gy) <= FACE_DOWN_XY_MAX);
+
+      const acc = event.acceleration;
+      const still = getAccelMag(acc) <= STILL_ACCEL_MAX;
+
+      const jerk = getJerkMag(acc);
+      const stable = jerk <= STILL_JERK_MAX;
+
+      const ok = nearFlatDown && still && stable;
+
+      if (!ok) return;
+
+      // Immediate trigger (no delay) but only once per ring window
+      if (!faceDownTriggeredThisRingWindow) {
+        faceDownTriggeredThisRingWindow = true;
         applyAggressiveDampToActiveRings();
-      } else if (isFaceDown && !nextFaceDown) {
-        isFaceDown = false;
       }
     }
 
-    // ---- SUSTAIN CURVE (incrementally more aggressive as it gets lower) ----
-    // 10 = no change
-    // 1 = very aggressive
-    // Each step down reduces decayTime more than the previous step (stronger damping toward the bottom).
+    // ---- SUSTAIN CURVE: smooth + each step lower is incrementally more aggressive ----
     function computeDecayTimeSeconds(sustainVal, safeDuration) {
       const s = Math.max(1, Math.min(10, sustainVal));
-      const norm = (s - 1) / 9; // 0..1
-
-      // Shape: power > 1 makes the bottom end get aggressively shorter,
-      // while still being smooth and monotonic across every step.
-      const gamma = 2.4;
-      const t = Math.pow(norm, gamma); // 0..1
-
-      const minDecay = Math.min(0.18, safeDuration); // sustain=1 extreme
-      const maxDecay = safeDuration;                 // near full
-
-      const ratio = maxDecay / Math.max(minDecay, 0.001);
-      return minDecay * Math.pow(ratio, t);
+      const minDecay = Math.min(0.18, safeDuration);
+      const p = 2.6; // bigger => more aggressive as you go lower
+      const factor = Math.pow(s / 10, p);
+      return Math.max(minDecay, safeDuration * factor);
     }
 
-    // ---- Face-down damping (exactly the same as sustain=1/10) ----
+    // ---- Face-down damping: exactly the same envelope as sustain=1/10 ----
     function applyAggressiveDampToActiveRings() {
       if (!audioCtx) return;
       const now = audioCtx.currentTime;
@@ -731,23 +750,28 @@
 
       const safeDuration = Math.max(buffer.duration, 0.05);
 
-      // Start at current gain
       gain.gain.setValueAtTime(volumeMaxGain, now);
 
-      // Register ring so face-down can damp it mid-flight
       const ringRef = { src, gain, ended: false, safeDuration };
       activeRings.add(ringRef);
+
+      // new ring window
+      faceDownTriggeredThisRingWindow = false;
+      lastAccAx = lastAccAy = lastAccAz = null;
 
       const cleanup = () => {
         ringRef.ended = true;
         activeRings.delete(ringRef);
+        if (activeRings.size === 0) {
+          faceDownTriggeredThisRingWindow = false;
+          lastAccAx = lastAccAy = lastAccAz = null;
+        }
       };
       src.addEventListener("ended", cleanup);
 
       const sustainVal = parseInt(sustainSlider.value, 10);
 
       if (sustainVal >= 10) {
-        // Full sustain: unchanged behavior
         const fadeOutTime = 0.02;
         const fadeStart = now + safeDuration - fadeOutTime;
 
@@ -757,7 +781,6 @@
         src.start(now);
         src.stop(now + safeDuration);
       } else {
-        // Damped: log-perceived fade via exponential ramp; increasingly aggressive lower values
         const decayTime = computeDecayTimeSeconds(sustainVal, safeDuration);
 
         const holdTime = Math.min(0.02, decayTime * 0.25);
@@ -772,11 +795,6 @@
         src.stop(endTime + 0.01);
       }
 
-      // If already face-down at ring start, damp immediately (same as sustain=1/10)
-      if (isFaceDown) {
-        applyAggressiveDampToActiveRings();
-      }
-
       // --- visual wiggle (unchanged) ---
       const tVis = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
@@ -786,22 +804,14 @@
       let dir = visualDir || (Math.random() < 0.5 ? "left" : "right");
       let transform;
 
-      if (dir === "left") {
-        transform = `translate(${-offset}px, 0px) rotate(0deg)`;
-      } else if (dir === "right") {
-        transform = `translate(${offset}px, 0px) rotate(0deg)`;
-      } else if (dir === "up") {
-        transform = `translate(0px, ${-offset}px) rotate(0deg)`;
-      } else if (dir === "down") {
-        transform = `translate(0px, ${offset}px) rotate(0deg)`;
-      } else {
-        transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * offset}deg)`;
-      }
+      if (dir === "left") transform = `translate(${-offset}px, 0px) rotate(0deg)`;
+      else if (dir === "right") transform = `translate(${offset}px, 0px) rotate(0deg)`;
+      else if (dir === "up") transform = `translate(0px, ${-offset}px) rotate(0deg)`;
+      else if (dir === "down") transform = `translate(0px, ${offset}px) rotate(0deg)`;
+      else transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * offset}deg)`;
 
       bellRing.style.transform = transform;
-      setTimeout(() => {
-        bellRing.style.transform = "translate(0px, 0px) rotate(0deg)";
-      }, 180);
+      setTimeout(() => { bellRing.style.transform = "translate(0px, 0px) rotate(0deg)"; }, 180);
     }
 
     // ---- MOTION HANDLING ----
@@ -834,7 +844,8 @@
     function handleMotion(event) {
       if (!currentNote) return;
 
-      updateFaceDownFromEvent(event);
+      // strict face-down check (instant; extremely strict; cannot trigger during swing)
+      checkFaceDownStrict(event);
 
       let acc = event.acceleration;
       if (!acc || (acc.x === null && acc.y === null && acc.z === null)) {
@@ -896,6 +907,10 @@
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
+
+      faceDownTriggeredThisRingWindow = false;
+      lastAccAx = lastAccAy = lastAccAz = null;
+
       window.addEventListener("devicemotion", handleMotion);
     }
 
@@ -905,17 +920,17 @@
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
-      isFaceDown = false;
+
+      faceDownTriggeredThisRingWindow = false;
+      lastAccAx = lastAccAy = lastAccAz = null;
       activeRings.clear();
     }
 
     // ---- MOTION PERMISSION (iOS) ----
     async function requestMotionPermission() {
       try {
-        if (
-          typeof DeviceMotionEvent !== "undefined" &&
-          typeof DeviceMotionEvent.requestPermission === "function"
-        ) {
+        if (typeof DeviceMotionEvent !== "undefined" &&
+            typeof DeviceMotionEvent.requestPermission === "function") {
           const res = await DeviceMotionEvent.requestPermission();
           return res === "granted";
         } else {
@@ -952,6 +967,8 @@
       playScreen.classList.add("active");
 
       gainWrapper.classList.add("active");
+      sustainWrapper.classList.add("active");
+
       startMotionListening();
     }
 
@@ -962,6 +979,7 @@
       noteScreen.style.display = "block";
 
       gainWrapper.classList.remove("active");
+      sustainWrapper.classList.remove("active");
     }
 
     backBtn.addEventListener("click", showNoteScreen);
