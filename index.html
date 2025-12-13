@@ -57,7 +57,7 @@
       --thumb: rgba(248, 250, 252, 0.98);
     }
 
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: var(--font-main);
@@ -397,10 +397,10 @@
     }
     .sustain-slider { width: 100%; height: 44px; }
 
-    /* Landscape layout fix: put sustain bottom-right so it doesn't steal vertical space */
+    /* Landscape: move sustain bottom-right; reduce vertical pressure */
     @media (orientation: landscape) {
       .play-screen {
-        padding-bottom: 1.2rem; /* remove reserved bottom space in landscape */
+        padding-bottom: 1.2rem;
       }
       .sustain-control {
         left: auto;
@@ -532,7 +532,6 @@
     setVhUnit();
     window.addEventListener("resize", setVhUnit);
     window.addEventListener("orientationchange", () => {
-      // some browsers need a tick after rotation
       setTimeout(setVhUnit, 50);
       setTimeout(setVhUnit, 250);
     });
@@ -654,7 +653,7 @@
       return preloadAllNotesPromise;
     }
 
-    // Headphone warning
+    // Headphone warning (OPTION B: exactly ONE declaration)
     let headphoneWarningShown = false;
     function showHeadphoneWarningOnce() {
       if (headphoneWarningShown) return;
@@ -964,8 +963,6 @@
       noteScreen.style.display   = "block";
       showHeadphoneWarningOnce();
     });
-
-    let headphoneWarningShown = false; // (kept here to avoid hoist confusion)
 
     function showPlayScreen(note) {
       currentNote = note;
