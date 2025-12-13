@@ -14,10 +14,9 @@
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
-  
     gtag('config', 'G-3G2H25N85');
   </script>
-  
+
   <!-- PWA & theme color -->
   <meta name="theme-color" content="#111827" />
 
@@ -38,7 +37,7 @@
     html, body {
       overflow: hidden;
       overscroll-behavior: none;
-      touch-action: none;   /* disable scroll & pinch on touch devices */
+      touch-action: none;
       position: fixed;
       width: 100%;
       height: 100%;
@@ -53,13 +52,18 @@
       --radius-full: 999px;
       --font-main: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
         "Segoe UI", sans-serif;
+
+      --ui-panel: rgba(248, 250, 252, 0.92);
+      --ui-border: rgba(15, 23, 42, 0.25);
+      --ui-shadow: 0 10px 22px rgba(15, 23, 42, 0.25);
+      --ui-text: #0b1120;
+      --ui-subtext: rgba(11, 17, 32, 0.72);
+      --track: rgba(15, 23, 42, 0.25);
+      --thumb: rgba(15, 23, 42, 0.95);
+      --thumb-ring: rgba(15, 23, 42, 0.15);
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: var(--font-main);
@@ -72,7 +76,6 @@
       position: relative;
     }
 
-    /* Global logo that sits above all screens, without affecting layout */
     .global-logo {
       position: fixed;
       top: 1.1rem;
@@ -88,12 +91,10 @@
       width: 100%;
       max-width: 480px;
       margin: auto;
-      padding: 3rem 1.2rem 2.5rem; /* extra top padding so card doesn't clash with logo */
+      padding: 3rem 1.2rem 2.5rem;
     }
 
-    /* Shared card styling for intro + note cards */
-    .card,
-    .note-card {
+    .card, .note-card {
       background: radial-gradient(circle at top left, #1f2937 0, #020617 70%);
       border-radius: 1.75rem;
       border: 1px solid #020617;
@@ -135,7 +136,6 @@
     }
 
     /* NOTE SELECTION SCREEN */
-
     .note-title {
       font-size: 1.15rem;
       font-weight: 600;
@@ -168,8 +168,7 @@
       cursor: pointer;
       box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
       transform: translateY(0);
-      transition: transform 0.16s ease-out, box-shadow 0.16s ease-out,
-        filter 0.16s ease-out;
+      transition: transform 0.16s ease-out, box-shadow 0.16s ease-out, filter 0.16s ease-out;
       text-shadow: 0 1px 3px rgba(0,0,0,0.35);
     }
 
@@ -186,7 +185,6 @@
     }
 
     /* PLAY SCREEN */
-
     .play-screen {
       position: fixed;
       inset: 0;
@@ -198,10 +196,7 @@
       color: #020617;
       padding: 1.2rem;
     }
-
-    .play-screen.active {
-      display: flex;
-    }
+    .play-screen.active { display: flex; }
 
     .back-btn {
       position: fixed;
@@ -217,6 +212,7 @@
       gap: 0.3rem;
       cursor: pointer;
       box-shadow: 0 8px 16px rgba(15, 23, 42, 0.3);
+      z-index: 40;
     }
 
     .back-btn:active {
@@ -276,46 +272,162 @@
       margin-bottom: 0.8rem;
     }
 
-    /* Volume slider (bottom center) */
-    .volume-wrapper {
-      width: 100%;
-      max-width: 220px;
-      margin-top: 0.4rem;
-      font-size: 0.8rem;
-      opacity: 0.9;
+    /* ---------- PRO SLIDER STYLING ---------- */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      outline: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 12px;
+      border-radius: 999px;
+      background: linear-gradient(to bottom, rgba(255,255,255,0.7), rgba(255,255,255,0.25));
+      box-shadow: inset 0 0 0 2px var(--track);
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--thumb);
+      box-shadow: 0 10px 22px rgba(0,0,0,0.25), 0 0 0 10px var(--thumb-ring);
+      margin-top: -8px; /* centers thumb on 12px track */
+    }
+    input[type="range"]:active::-webkit-slider-thumb {
+      transform: scale(1.03);
+    }
+
+    input[type="range"]::-moz-range-track {
+      height: 12px;
+      border-radius: 999px;
+      background: linear-gradient(to bottom, rgba(255,255,255,0.7), rgba(255,255,255,0.25));
+      box-shadow: inset 0 0 0 2px var(--track);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--thumb);
+      border: none;
+      box-shadow: 0 10px 22px rgba(0,0,0,0.25), 0 0 0 10px var(--thumb-ring);
+    }
+
+    /* Sustain slider panel (bottom center) */
+    .sustain-wrapper {
+      width: min(340px, 92vw);
+      margin-top: 0.55rem;
+      padding: 0.9rem 1rem 1rem;
+      border-radius: 1.1rem;
+      background: var(--ui-panel);
+      border: 1px solid var(--ui-border);
+      box-shadow: var(--ui-shadow);
+      color: var(--ui-text);
       display: flex;
       flex-direction: column;
-      align-items: stretch;
-      gap: 0.25rem;
+      gap: 0.55rem;
+      z-index: 35;
     }
 
-    .volume-label-row {
+    .sustain-label-row {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: baseline;
+      gap: 0.75rem;
     }
 
-    .volume-label-row span {
-      opacity: 0.9;
+    .sustain-label {
+      font-size: 0.92rem;
+      font-weight: 800;
+      letter-spacing: 0.01em;
     }
 
-    .volume-slider {
+    .sustain-sub {
+      font-size: 0.78rem;
+      color: var(--ui-subtext);
+      margin-top: 0.15rem;
+      text-align: left;
+    }
+
+    .sustain-value {
+      font-size: 0.95rem;
+      font-weight: 900;
+      min-width: 2.3rem;
+      text-align: right;
+    }
+
+    .sustain-slider {
       width: 100%;
+      height: 38px; /* more touch-friendly */
+    }
+
+    /* Gain (left, vertical, big + clean) */
+    .gain-wrapper {
+      position: fixed;
+      left: 0.8rem;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 50;
+      width: 88px;
+      padding: 0.85rem 0.7rem 0.95rem;
+      border-radius: 1.2rem;
+      background: var(--ui-panel);
+      border: 1px solid var(--ui-border);
+      box-shadow: var(--ui-shadow);
+      display: none;
+      color: var(--ui-text);
+      align-items: center;
+      gap: 0.55rem;
+    }
+    .gain-wrapper.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .gain-title {
+      font-size: 0.92rem;
+      font-weight: 900;
+      letter-spacing: 0.01em;
+      line-height: 1.1;
+    }
+
+    .gain-hint {
+      font-size: 0.72rem;
+      color: var(--ui-subtext);
+      line-height: 1.15;
+      text-align: center;
+      margin-top: -0.2rem;
+    }
+
+    .gain-value {
+      font-size: 1.05rem;
+      font-weight: 950;
+      margin-top: 0.1rem;
+    }
+
+    .gain-slider {
+      /* We'll draw it by rotating a normal horizontal slider for consistent styling */
+      width: 220px;   /* becomes height after rotation */
+      height: 38px;
+      transform: rotate(-90deg);
+      touch-action: none;
+      margin: 0.35rem 0;
     }
 
     @media (max-width: 400px) {
-      .card,
-      .note-card {
-        padding: 1.2rem 1.2rem 1.3rem;
-      }
-      .note-btn {
-        padding: 0.55rem 0.25rem;
-      }
+      .card, .note-card { padding: 1.2rem 1.2rem 1.3rem; }
+      .note-btn { padding: 0.55rem 0.25rem; }
+      .gain-wrapper { width: 82px; left: 0.55rem; }
+      .gain-slider { width: 200px; }
+      .sustain-wrapper { width: min(330px, 92vw); }
     }
   </style>
 </head>
+
 <body>
-  <!-- Global logo that sits above both the motion + tiles screens -->
   <img
     class="global-logo"
     src="/favicons/favicon_512_transparent.png"
@@ -354,6 +466,23 @@
     </div>
   </div>
 
+  <!-- LEFT GAIN CONTROL (vertical) -->
+  <div class="gain-wrapper" id="gain-wrapper" aria-label="Gain control">
+    <div class="gain-title">Gain</div>
+    <div class="gain-hint">Higher can<br>distort</div>
+    <div class="gain-value" id="gain-value-label">1</div>
+    <input
+      type="range"
+      id="gain-slider"
+      class="gain-slider"
+      min="1"
+      max="10"
+      step="1"
+      value="1"
+      aria-label="Gain slider"
+    />
+  </div>
+
   <!-- PLAY SCREEN -->
   <div class="play-screen" id="play-screen" role="main">
     <button class="back-btn" id="back-btn" type="button">
@@ -380,19 +509,24 @@
       Tap the note or bell if needed.
     </div>
 
-    <div class="volume-wrapper" id="volume-wrapper">
-      <div class="volume-label-row">
-        <span>Gain (might distort audio if &gt; 1)</span>
-        <span id="volume-value-label">1</span>
+    <!-- SUSTAIN (bottom center) -->
+    <div class="sustain-wrapper" id="sustain-wrapper">
+      <div class="sustain-label-row">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;gap:0.1rem;">
+          <div class="sustain-label">Sustain</div>
+          <div class="sustain-sub">10 = full ring · 1 = damped</div>
+        </div>
+        <div class="sustain-value" id="sustain-value-label">10</div>
       </div>
       <input
         type="range"
-        id="volume-slider"
-        class="volume-slider"
+        id="sustain-slider"
+        class="sustain-slider"
         min="1"
         max="10"
         step="1"
-        value="1"
+        value="10"
+        aria-label="Sustain slider"
       />
     </div>
   </div>
@@ -420,25 +554,23 @@
     // Called only for motion-triggered rings (not taps)
     function ensureWakeLock() {
       if (!wakeLockSupported) return;
-      if (!wakeLock) {
-        requestWakeLock();
-      }
+      if (!wakeLock) requestWakeLock();
     }
 
     // ----- NOTE DEFINITIONS: chromatic C5–B7 -----
     const PITCHES = [
-      { name: "C",  color: "#FF3B30" }, // red
-      { name: "C#", color: "#FF2D92" }, // hot pink
-      { name: "D",  color: "#FF9500" }, // orange
-      { name: "D#", color: "#FFB300" }, // yellow-orange
-      { name: "E",  color: "#FFEB3B" }, // yellow
-      { name: "F",  color: "#34C759" }, // green
-      { name: "F#", color: "#00FF7F" }, // neon green
-      { name: "G",  color: "#00C7BE" }, // teal
-      { name: "G#", color: "#00B0FF" }, // cyan/blue-teal
-      { name: "A",  color: "#007AFF" }, // blue
-      { name: "A#", color: "#AF52DE" }, // magenta-purple
-      { name: "B",  color: "#5856D6" }  // purple
+      { name: "C",  color: "#FF3B30" },
+      { name: "C#", color: "#FF2D92" },
+      { name: "D",  color: "#FF9500" },
+      { name: "D#", color: "#FFB300" },
+      { name: "E",  color: "#FFEB3B" },
+      { name: "F",  color: "#34C759" },
+      { name: "F#", color: "#00FF7F" },
+      { name: "G",  color: "#00C7BE" },
+      { name: "G#", color: "#00B0FF" },
+      { name: "A",  color: "#007AFF" },
+      { name: "A#", color: "#AF52DE" },
+      { name: "B",  color: "#5856D6" }
     ];
 
     const OCTAVES = [5, 6, 7];
@@ -446,27 +578,18 @@
 
     OCTAVES.forEach((oct) => {
       PITCHES.forEach((p) => {
-        // Now include full chromatic 7th octave up to B7
         const id = `${p.name}${oct}`;
         const fileName = `${p.name}${oct}.wav`;
         const encodedFile = encodeURIComponent(fileName);
 
-        // Label rules:
-        //  - 5th octave: "C (Low)", "C# (Low)", etc.
-        //  - 6th octave: "C", "C#", etc. (no number)
-        //  - 7th octave: "C (High)", "C# (High)", ... "B (High)"
         let label;
-        if (oct === 5) {
-          label = `${p.name} (Low)`;
-        } else if (oct === 6) {
-          label = p.name;
-        } else if (oct === 7) {
-          label = `${p.name} (High)`;
-        }
+        if (oct === 5) label = `${p.name} (Low)`;
+        else if (oct === 6) label = p.name;
+        else label = `${p.name} (High)`;
 
         NOTES.push({
-          id,          // used for lookup and buffer keys
-          label,       // used for tile text + play-note label
+          id,
+          label,
           file: `audio/${encodedFile}`,
           color: p.color,
         });
@@ -485,43 +608,38 @@
     const bellRing      = document.getElementById("bell-ring");
     const bellVisual    = document.getElementById("bell-visual");
 
-    const volumeWrapper    = document.getElementById("volume-wrapper");
-    const volumeSlider     = document.getElementById("volume-slider");
-    const volumeValueLabel = document.getElementById("volume-value-label");
+    // Gain (left)
+    const gainWrapper    = document.getElementById("gain-wrapper");
+    const gainSlider     = document.getElementById("gain-slider");
+    const gainValueLabel = document.getElementById("gain-value-label");
+
+    // Sustain (bottom)
+    const sustainSlider     = document.getElementById("sustain-slider");
+    const sustainValueLabel = document.getElementById("sustain-value-label");
 
     // ---- AUDIO (sample based) ----
     let audioCtx = null;
-    let volumeMaxGain = 1.0;
+    let volumeMaxGain = 1.0; // "Gain"
     const noteBuffers = new Map();
 
-    let allNotesPreloaded = false;
     let preloadAllNotesPromise = null;
 
     function ensureAudioCtx() {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
-      if (!audioCtx || audioCtx.state === "closed") {
-        audioCtx = new AudioCtx();
-      }
+      if (!audioCtx || audioCtx.state === "closed") audioCtx = new AudioCtx();
     }
 
     async function resumeAudioCtx() {
       ensureAudioCtx();
       if (!audioCtx) return;
       if (audioCtx.state === "suspended") {
-        try {
-          await audioCtx.resume();
-        } catch (e) {
-          console.warn("Audio resume error", e);
-        }
+        try { await audioCtx.resume(); } catch (e) { console.warn("Audio resume error", e); }
       }
     }
 
     function resetAudioContextOnReturn() {
-      // Close and recreate AudioContext to avoid iOS weirdness on return.
-      if (audioCtx && audioCtx.state !== "closed") {
-        audioCtx.close().catch(() => {});
-      }
+      if (audioCtx && audioCtx.state !== "closed") audioCtx.close().catch(() => {});
       audioCtx = null;
     }
 
@@ -537,7 +655,6 @@
       return buf;
     }
 
-    // Preload ALL note buffers so first ring is instant
     function preloadAllNotes() {
       if (preloadAllNotesPromise) return preloadAllNotesPromise;
 
@@ -549,7 +666,6 @@
           })
         )
       ).then(() => {
-        allNotesPreloaded = true;
         console.log("All notes preloaded");
       });
 
@@ -569,60 +685,172 @@
       );
     }
 
-    // Volume slider
-    volumeValueLabel.textContent = volumeSlider.value;
-    volumeSlider.addEventListener("input", () => {
-      volumeMaxGain = parseFloat(volumeSlider.value);
-      volumeValueLabel.textContent = volumeSlider.value;
+    // ---- GAIN slider ----
+    gainValueLabel.textContent = gainSlider.value;
+    gainSlider.addEventListener("input", () => {
+      volumeMaxGain = parseFloat(gainSlider.value);
+      gainValueLabel.textContent = gainSlider.value;
     });
 
-    // Play bell sample
+    // ---- SUSTAIN slider ----
+    sustainValueLabel.textContent = sustainSlider.value;
+    sustainSlider.addEventListener("input", () => {
+      sustainValueLabel.textContent = sustainSlider.value;
+    });
+
+    // ---- FACE DOWN DETECTION ----
+    // We infer "face down" from accelerationIncludingGravity.z being strongly positive.
+    let isFaceDown = false;
+    const FACE_DOWN_Z_THRESHOLD = 7.0;
+
+    // Track active rings so we can aggressively damp them mid-ring.
+    const activeRings = new Set();
+
+    function updateFaceDownFromEvent(event) {
+      const accG = event.accelerationIncludingGravity;
+      if (!accG || accG.z === null) return;
+
+      const z = accG.z || 0;
+      const nextFaceDown = z > FACE_DOWN_Z_THRESHOLD;
+
+      // Trigger damping only on transition into face-down
+      if (!isFaceDown && nextFaceDown) {
+        isFaceDown = true;
+        applyAggressiveDampToActiveRings();
+      } else if (isFaceDown && !nextFaceDown) {
+        isFaceDown = false;
+      }
+    }
+
+    // --- Sustain curve helper (VERY LOW damping for most of the range; 1 is still very aggressive) ---
+    function computeDecayTimeSeconds(sustainVal, safeDuration) {
+      const s = Math.max(1, Math.min(10, sustainVal));
+      const base = (s - 1) / 9; // 0..1
+
+      // Flatten the top massively so 2–9 stay closer to full ring.
+      // Increase k for even less damping overall; decrease for more midrange control.
+      const k = 8;
+      const t = 1 - Math.pow(1 - base, k); // 0..1, biased toward 1 for mid/high values
+
+      const minDecay = Math.min(0.18, safeDuration); // sustain=1/10 (very damped)
+      const maxDecay = safeDuration;                 // near full
+
+      const ratio = maxDecay / Math.max(minDecay, 0.001);
+      return minDecay * Math.pow(ratio, t);
+    }
+
+    // --- Face-down damping (tuned to match Sustain = 1/10 exactly) ---
+    function applyAggressiveDampToActiveRings() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+
+      // Must match the sustain=1/10 extreme (minDecay)
+      const aggressiveDecayTime = 0.18;
+      const holdTime = Math.min(0.02, aggressiveDecayTime * 0.25);
+
+      activeRings.forEach(r => {
+        if (!r || r.ended) return;
+
+        try {
+          if (typeof r.gain.gain.cancelAndHoldAtTime === "function") {
+            r.gain.gain.cancelAndHoldAtTime(now);
+          } else {
+            r.gain.gain.cancelScheduledValues(now);
+            r.gain.gain.setValueAtTime(r.gain.gain.value, now);
+          }
+
+          const current = Math.max(r.gain.gain.value, 0.0002);
+          r.gain.gain.setValueAtTime(current, now);
+          r.gain.gain.setValueAtTime(current, now + holdTime);
+          r.gain.gain.exponentialRampToValueAtTime(0.0001, now + aggressiveDecayTime);
+
+          r.src.stop(now + aggressiveDecayTime + 0.01);
+        } catch (e) {
+          // ignore if already stopped
+        }
+      });
+    }
+
+    // ---- Play bell sample ----
     async function playBell(note, intensity = 1, visualDir = null) {
       if (!note) return;
-    
+
       ensureAudioCtx();
       if (!audioCtx) return;
-    
+
       if (audioCtx.state === "suspended") {
         await audioCtx.resume();
       }
-    
+
       const buffer = await loadNoteBuffer(note);
       if (!buffer) return;
-    
+
       const now = audioCtx.currentTime;
       const src = audioCtx.createBufferSource();
       src.buffer = buffer;
-    
+
       const gain = audioCtx.createGain();
       src.connect(gain);
       gain.connect(audioCtx.destination);
-    
-      const duration = buffer.duration;
-      const safeDuration = Math.max(duration, 0.05); // guard against super-short buffers
-      const fadeOutTime = 0.02;                      // 20 ms fade
-    
-      // Start at current volume
+
+      const safeDuration = Math.max(buffer.duration, 0.05);
+
+      // Start at current gain
       gain.gain.setValueAtTime(volumeMaxGain, now);
-    
-      // Hold until just before the end, then fade to (almost) zero
-      const fadeStart = now + safeDuration - fadeOutTime;
-      gain.gain.setValueAtTime(volumeMaxGain, fadeStart);
-      gain.gain.linearRampToValueAtTime(0.0001, now + safeDuration);
-    
-      // Start + stop the source
-      src.start(now);
-      src.stop(now + safeDuration);
-    
+
+      // Register ring so face-down can damp it mid-flight
+      const ringRef = { src, gain, ended: false };
+      activeRings.add(ringRef);
+
+      const cleanup = () => {
+        ringRef.ended = true;
+        activeRings.delete(ringRef);
+      };
+      src.addEventListener("ended", cleanup);
+
+      const sustainVal = parseInt(sustainSlider.value, 10);
+
+      if (sustainVal >= 10) {
+        // Full sustain: unchanged behavior
+        const fadeOutTime = 0.02;
+        const fadeStart = now + safeDuration - fadeOutTime;
+
+        gain.gain.setValueAtTime(volumeMaxGain, fadeStart);
+        gain.gain.linearRampToValueAtTime(0.0001, now + safeDuration);
+
+        src.start(now);
+        src.stop(now + safeDuration);
+      } else {
+        // New, very gentle damping curve (log-perceived via exponential ramp)
+        const decayTime = computeDecayTimeSeconds(sustainVal, safeDuration);
+
+        // Preserve initial transient, then exponential fade
+        const holdTime = Math.min(0.02, decayTime * 0.25);
+        const fadeStart = now + holdTime;
+        const endTime = now + decayTime;
+
+        gain.gain.setValueAtTime(volumeMaxGain, now);
+        gain.gain.setValueAtTime(volumeMaxGain, fadeStart);
+        gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+
+        src.start(now);
+        src.stop(endTime + 0.01);
+      }
+
+      // If already face-down at ring start, damp immediately (same as sustain=1/10)
+      if (isFaceDown) {
+        applyAggressiveDampToActiveRings();
+      }
+
       // --- visual wiggle (unchanged) ---
-      const t = Math.min(Math.max(intensity, 0), 1);
+      const tVis = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
-      const offset = minOffset + (maxOffset - minOffset) * t;
-    
+      const offset = minOffset + (maxOffset - minOffset) * tVis;
+
       let dir = visualDir || (Math.random() < 0.5 ? "left" : "right");
       let transform;
-    
+
       if (dir === "left") {
         transform = `translate(${-offset}px, 0px) rotate(0deg)`;
       } else if (dir === "right") {
@@ -634,23 +862,21 @@
       } else {
         transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * offset}deg)`;
       }
-    
+
       bellRing.style.transform = transform;
       setTimeout(() => {
         bellRing.style.transform = "translate(0px, 0px) rotate(0deg)";
       }, 180);
     }
-    
 
     // ---- MOTION HANDLING ----
     let currentNote = null;
     let lastRingTime = 0;
 
-    // Swing detection constants (tuned by feel)
-    const MIN_INTERVAL   = 200;  // min time between rings (ms)
-    const DELTA_RING_MIN = 3.0;  // lower bound of “strong enough” swing
-    const DELTA_RING_MAX = 10.0; // upper bound for intensity scaling
-    const RESET_DELTA    = 1.5;  // under this = swing finished
+    const MIN_INTERVAL   = 200;
+    const DELTA_RING_MIN = 3.0;
+    const DELTA_RING_MAX = 10.0;
+    const RESET_DELTA    = 1.5;
 
     let inSwing = false;
     let lastMagnitude = null;
@@ -664,21 +890,18 @@
       const maxComp = Math.max(absX, absY, absZ);
       const MIN_JERK = 0.3;
 
-      if (maxComp < MIN_JERK) {
-        return Math.random() < 0.5 ? "left" : "right";
-      }
+      if (maxComp < MIN_JERK) return Math.random() < 0.5 ? "left" : "right";
 
-      if (maxComp === absX) {
-        return jx > 0 ? "left" : "right";
-      } else if (maxComp === absY) {
-        return jy > 0 ? "up" : "down";
-      } else {
-        return jz > 0 ? "up" : "down";
-      }
+      if (maxComp === absX) return jx > 0 ? "left" : "right";
+      if (maxComp === absY) return jy > 0 ? "up" : "down";
+      return jz > 0 ? "up" : "down";
     }
 
     function handleMotion(event) {
       if (!currentNote) return;
+
+      // Update face-down continuously
+      updateFaceDownFromEvent(event);
 
       let acc = event.acceleration;
       if (!acc || (acc.x === null && acc.y === null && acc.z === null)) {
@@ -694,9 +917,7 @@
 
       if (lastMagnitude === null || lastAx === null) {
         lastMagnitude = magnitude;
-        lastAx = ax;
-        lastAy = ay;
-        lastAz = az;
+        lastAx = ax; lastAy = ay; lastAz = az;
         return;
       }
 
@@ -708,36 +929,26 @@
       const absDelta    = Math.abs(signedDelta);
       const now         = performance.now();
 
-      if (absDelta < RESET_DELTA) {
-        inSwing = false;
-      }
+      if (absDelta < RESET_DELTA) inSwing = false;
 
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
       const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
-      const changedDirection =
-        prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
-
+      const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
       const justReversed = wasBuilding && changedDirection;
 
-      if (!inSwing &&
-          justReversed &&
-          now - lastRingTime > MIN_INTERVAL) {
-
+      if (!inSwing && justReversed && now - lastRingTime > MIN_INTERVAL) {
         const peak = Math.abs(lastDelta);
 
         if (peak >= DELTA_RING_MIN) {
           inSwing = true;
           lastRingTime = now;
 
-          const clamped =
-            Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
-          const intensity =
-            (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
+          const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
+          const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
 
           const visualDir = computeVisualDirFromJerk(jx, jy, jz);
 
-          // Only motion-triggered rings request wake lock
           ensureWakeLock();
           playBell(currentNote, intensity, visualDir);
         }
@@ -745,9 +956,7 @@
 
       lastMagnitude = magnitude;
       lastDelta     = signedDelta;
-      lastAx = ax;
-      lastAy = ay;
-      lastAz = az;
+      lastAx = ax; lastAy = ay; lastAz = az;
     }
 
     function startMotionListening() {
@@ -764,6 +973,8 @@
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
+      isFaceDown = false;
+      activeRings.clear();
     }
 
     // ---- MOTION PERMISSION (iOS) ----
@@ -790,13 +1001,10 @@
       const granted = await requestMotionPermission();
 
       if (!granted) {
-        alert(
-          "Motion access hasn't been granted yet. Close this window and try again."
-        );
+        alert("Motion access hasn't been granted yet. Close this window and try again.");
         return;
       }
 
-      // Start preloading all notes once user has interacted
       preloadAllNotes();
 
       motionScreen.style.display = "none";
@@ -810,7 +1018,8 @@
       playScreen.style.background = note.color;
       noteScreen.style.display = "none";
       playScreen.classList.add("active");
-      volumeWrapper.style.display = "flex";
+
+      gainWrapper.classList.add("active");
       startMotionListening();
     }
 
@@ -819,7 +1028,8 @@
       stopMotionListening();
       playScreen.classList.remove("active");
       noteScreen.style.display = "block";
-      volumeWrapper.style.display = "none";
+
+      gainWrapper.classList.remove("active");
     }
 
     backBtn.addEventListener("click", showNoteScreen);
@@ -832,7 +1042,6 @@
       if (currentNote) playBell(currentNote, 1, null);
     });
 
-    // Keyboard support for bell visual (accessibility)
     bellVisual.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
@@ -840,7 +1049,6 @@
       }
     });
 
-    // ---- INIT NOTE BUTTONS ----
     function initNoteButtons() {
       NOTES.forEach((n) => {
         const btn = document.createElement("button");
@@ -851,7 +1059,6 @@
 
         btn.addEventListener("click", async () => {
           await resumeAudioCtx();
-          // Ensure this note's buffer is ready (fast if preloaded)
           await loadNoteBuffer(n);
           showPlayScreen(n);
           playBell(n, 1, null);
@@ -863,13 +1070,11 @@
 
     initNoteButtons();
 
-    // Auto-skip permission screen on platforms without explicit API
     window.addEventListener("load", () => {
       const needsExplicitPermission =
         typeof DeviceMotionEvent !== "undefined" &&
         typeof DeviceMotionEvent.requestPermission === "function";
 
-      // Preload notes as soon as possible on platforms that allow it
       preloadAllNotes();
 
       if (!needsExplicitPermission) {
@@ -879,29 +1084,16 @@
       }
     });
 
-    window.addEventListener(
-      "touchstart",
-      () => {
-        resumeAudioCtx();
-      },
-      { passive: true }
-    );
+    window.addEventListener("touchstart", () => { resumeAudioCtx(); }, { passive: true });
 
-    // Audio reset on visibility changes / navigation events
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) {
-        resetAudioContextOnReturn();
-      }
+      if (!document.hidden) resetAudioContextOnReturn();
     });
 
-    window.addEventListener("pageshow", () => {
-      resetAudioContextOnReturn();
-    });
-
-    window.addEventListener("focus", () => {
-      resetAudioContextOnReturn();
-    });
+    window.addEventListener("pageshow", () => { resetAudioContextOnReturn(); });
+    window.addEventListener("focus", () => { resetAudioContextOnReturn(); });
   </script>
+
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
