@@ -720,103 +720,104 @@
     }
 
     // Play bell sample
+    // Play bell sample
     async function playBell(note, intensity = 1, visualDir = null) {
       if (!note) return;
-
+    
       ensureAudioCtx();
       if (!audioCtx) return;
-
+    
       if (audioCtx.state === "suspended") {
         await audioCtx.resume();
       }
-
+    
       const buffer = await loadNoteBuffer(note);
       if (!buffer) return;
-
+    
       const now = audioCtx.currentTime;
       const src = audioCtx.createBufferSource();
       src.buffer = buffer;
-
+    
       const gain = audioCtx.createGain();
       src.connect(gain);
       gain.connect(audioCtx.destination);
-
+    
       const duration = buffer.duration;
       const safeDuration = Math.max(duration, 0.05); // guard against super-short buffers
-
+    
       // --- Sustain behavior ---
       // sustain = 10 => original behavior (hold until end then tiny fade)
       // sustain < 10 => exponential/log-perceived fade that ends earlier (dampened)
       const sustainVal = parseInt(sustainSlider.value, 10);
-
+    
       // Always start at current gain
       gain.gain.setValueAtTime(volumeMaxGain, now);
-
+    
       // Register ring so face-down can damp it mid-flight
       const ringRef = { src, gain, ended: false };
       activeRings.add(ringRef);
-
+    
       // Cleanup when it ends
       const cleanup = () => {
         ringRef.ended = true;
         activeRings.delete(ringRef);
       };
       src.addEventListener("ended", cleanup);
-
+    
       if (sustainVal >= 10) {
         // Original: hold full volume, fade only at very end
         const fadeOutTime = 0.02; // 20 ms fade
         const fadeStart = now + safeDuration - fadeOutTime;
-
+    
         gain.gain.setValueAtTime(volumeMaxGain, fadeStart);
         gain.gain.linearRampToValueAtTime(0.0001, now + safeDuration);
-
+    
         src.start(now);
         src.stop(now + safeDuration);
       } else {
-        // Log-scale mapping of sustain -> decay time (exponential interpolation)
-        // 1/10 = very aggressive damping
-        // 9/10 = close to full
-        const t = (sustainVal - 1) / 9; // 0..1
-
+        // Rebalanced curve so high sustain values aren't overly aggressive:
+        // 9 should feel closer to old ~5.
+        let t = (sustainVal - 1) / 9; // 0..1
+        t = t * t; // flatten the top end
+    
         // Aggressive minimum decay (seconds). Clamp so super-short samples still work.
         const minDecay = Math.min(0.18, safeDuration);
-        // Max decay close to sample duration (but don't necessarily need full duration)
+        // Max decay close to sample duration
         const maxDecay = safeDuration;
-
-        // Exponential interpolation: decayTime = minDecay * (maxDecay/minDecay)^t
+    
+        // Exponential interpolation => log-perceived fade
         const ratio = maxDecay / Math.max(minDecay, 0.001);
         const decayTime = minDecay * Math.pow(ratio, t);
-
+    
         // Small hold to preserve the initial transient, then exponential fade
         const holdTime = Math.min(0.02, decayTime * 0.25);
         const fadeStart = now + holdTime;
         const endTime = now + decayTime;
-
+    
         gain.gain.setValueAtTime(volumeMaxGain, now);
         gain.gain.setValueAtTime(volumeMaxGain, fadeStart);
-
+    
         // Exponential ramp = "log scale fade" perception
         gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
-
+    
         src.start(now);
         src.stop(endTime + 0.01);
       }
-
+    
       // If already face-down at ring start, immediately apply the aggressive damp
       if (isFaceDown) {
         applyAggressiveDampToActiveRings();
       }
-
+    
       // --- visual wiggle (unchanged) ---
       const tVis = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
       const offset = minOffset + (maxOffset - minOffset) * tVis;
-
+    
       let dir = visualDir || (Math.random() < 0.5 ? "left" : "right");
       let transform;
-
+    
       if (dir === "left") {
         transform = `translate(${-offset}px, 0px) rotate(0deg)`;
       } else if (dir === "right") {
@@ -828,12 +829,13 @@
       } else {
         transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * offset}deg)`;
       }
-
+    
       bellRing.style.transform = transform;
       setTimeout(() => {
         bellRing.style.transform = "translate(0px, 0px) rotate(0deg)";
       }, 180);
     }
+
 
     // ---- MOTION HANDLING ----
     let currentNote = null;
