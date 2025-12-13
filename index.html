@@ -276,8 +276,8 @@
       margin-bottom: 0.8rem;
     }
 
-    /* Sustain slider (bottom center) */
-    .sustain-wrapper {
+    /* Volume slider (bottom center) */
+    .volume-wrapper {
       width: 100%;
       max-width: 220px;
       margin-top: 0.4rem;
@@ -289,65 +289,18 @@
       gap: 0.25rem;
     }
 
-    .sustain-label-row {
+    .volume-label-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
 
-    .sustain-label-row span {
+    .volume-label-row span {
       opacity: 0.9;
     }
 
-    .sustain-slider {
+    .volume-slider {
       width: 100%;
-    }
-
-    /* Gain slider (left side, vertical) */
-    .gain-wrapper {
-      position: fixed;
-      left: 0.8rem;
-      top: 50%;
-      transform: translateY(-50%);
-      z-index: 30;
-      width: 64px;
-      padding: 0.6rem 0.55rem 0.7rem;
-      border-radius: 1rem;
-      background: rgba(248, 250, 252, 0.92);
-      border: 1px solid rgba(15, 23, 42, 0.25);
-      box-shadow: 0 10px 20px rgba(15, 23, 42, 0.25);
-      display: none; /* only on play screen */
-      color: #0b1120;
-    }
-
-    .gain-wrapper.active {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.45rem;
-    }
-
-    .gain-title {
-      font-size: 0.72rem;
-      font-weight: 700;
-      line-height: 1.1;
-      text-align: center;
-    }
-
-    .gain-value {
-      font-size: 0.8rem;
-      font-weight: 800;
-      margin-top: -0.2rem;
-    }
-
-    .gain-slider {
-      /* Prefer native vertical sliders where supported */
-      -webkit-appearance: slider-vertical;
-      appearance: slider-vertical;
-      writing-mode: bt-lr;
-      width: 22px;
-      height: 170px;
-      touch-action: none;
     }
 
     @media (max-width: 400px) {
@@ -357,13 +310,6 @@
       }
       .note-btn {
         padding: 0.55rem 0.25rem;
-      }
-      .gain-wrapper {
-        width: 58px;
-        left: 0.55rem;
-      }
-      .gain-slider {
-        height: 150px;
       }
     }
   </style>
@@ -408,22 +354,6 @@
     </div>
   </div>
 
-  <!-- LEFT GAIN CONTROL (vertical) -->
-  <div class="gain-wrapper" id="gain-wrapper" aria-label="Gain control">
-    <div class="gain-title">Gain</div>
-    <div class="gain-value" id="gain-value-label">1</div>
-    <input
-      type="range"
-      id="gain-slider"
-      class="gain-slider"
-      min="1"
-      max="10"
-      step="1"
-      value="1"
-      aria-label="Gain slider"
-    />
-  </div>
-
   <!-- PLAY SCREEN -->
   <div class="play-screen" id="play-screen" role="main">
     <button class="back-btn" id="back-btn" type="button">
@@ -450,20 +380,19 @@
       Tap the note or bell if needed.
     </div>
 
-    <!-- SUSTAIN (replaces old Gain position) -->
-    <div class="sustain-wrapper" id="sustain-wrapper">
-      <div class="sustain-label-row">
-        <span>Sustain (10 = full, 1 = damped)</span>
-        <span id="sustain-value-label">10</span>
+    <div class="volume-wrapper" id="volume-wrapper">
+      <div class="volume-label-row">
+        <span>Gain (might distort audio if &gt; 1)</span>
+        <span id="volume-value-label">1</span>
       </div>
       <input
         type="range"
-        id="sustain-slider"
-        class="sustain-slider"
+        id="volume-slider"
+        class="volume-slider"
         min="1"
         max="10"
         step="1"
-        value="10"
+        value="1"
       />
     </div>
   </div>
@@ -556,19 +485,13 @@
     const bellRing      = document.getElementById("bell-ring");
     const bellVisual    = document.getElementById("bell-visual");
 
-    // Gain (left)
-    const gainWrapper    = document.getElementById("gain-wrapper");
-    const gainSlider     = document.getElementById("gain-slider");
-    const gainValueLabel = document.getElementById("gain-value-label");
-
-    // Sustain (bottom)
-    const sustainWrapper    = document.getElementById("sustain-wrapper");
-    const sustainSlider     = document.getElementById("sustain-slider");
-    const sustainValueLabel = document.getElementById("sustain-value-label");
+    const volumeWrapper    = document.getElementById("volume-wrapper");
+    const volumeSlider     = document.getElementById("volume-slider");
+    const volumeValueLabel = document.getElementById("volume-value-label");
 
     // ---- AUDIO (sample based) ----
     let audioCtx = null;
-    let volumeMaxGain = 1.0; // "Gain"
+    let volumeMaxGain = 1.0;
     const noteBuffers = new Map();
 
     let allNotesPreloaded = false;
@@ -646,80 +569,13 @@
       );
     }
 
-    // ---- GAIN slider (left) ----
-    gainValueLabel.textContent = gainSlider.value;
-    gainSlider.addEventListener("input", () => {
-      volumeMaxGain = parseFloat(gainSlider.value);
-      gainValueLabel.textContent = gainSlider.value;
+    // Volume slider
+    volumeValueLabel.textContent = volumeSlider.value;
+    volumeSlider.addEventListener("input", () => {
+      volumeMaxGain = parseFloat(volumeSlider.value);
+      volumeValueLabel.textContent = volumeSlider.value;
     });
 
-    // ---- SUSTAIN slider (bottom) ----
-    sustainValueLabel.textContent = sustainSlider.value;
-    sustainSlider.addEventListener("input", () => {
-      sustainValueLabel.textContent = sustainSlider.value;
-    });
-
-    // ---- FACE DOWN DETECTION (during ringing) ----
-    // We infer "face down" from accelerationIncludingGravity.z being strongly positive.
-    // (Typically: screen-up ~ -9.8, screen-down ~ +9.8, but we keep thresholds forgiving.)
-    let isFaceDown = false;
-    const FACE_DOWN_Z_THRESHOLD = 7.0;
-
-    // Track active rings so we can aggressively damp them mid-ring.
-    const activeRings = new Set();
-
-    function applyAggressiveDampToActiveRings() {
-      if (!audioCtx) return;
-      const now = audioCtx.currentTime;
-
-      // This is the "Sustain = 1/10" aggressive damping behavior.
-      // Very fast decay, but still smooth (no clicks) via exponential ramp.
-      const aggressiveDecayTime = 0.18; // seconds (very dampened)
-
-      activeRings.forEach(r => {
-        // If already essentially ended, skip
-        if (!r || r.ended) return;
-
-        try {
-          // Cancel anything scheduled after now, then ramp down quickly.
-          if (typeof r.gain.gain.cancelAndHoldAtTime === "function") {
-            r.gain.gain.cancelAndHoldAtTime(now);
-          } else {
-            // fallback: freeze at current value (approx)
-            r.gain.gain.cancelScheduledValues(now);
-            r.gain.gain.setValueAtTime(r.gain.gain.value, now);
-          }
-
-          // Exponential (log-perceived) fade to near-zero
-          const current = Math.max(r.gain.gain.value, 0.0002);
-          r.gain.gain.setValueAtTime(current, now);
-          r.gain.gain.exponentialRampToValueAtTime(0.0001, now + aggressiveDecayTime);
-
-          // Stop the source shortly after (safe try/catch)
-          r.src.stop(now + aggressiveDecayTime + 0.01);
-        } catch (e) {
-          // ignore if node already stopped
-        }
-      });
-    }
-
-    function updateFaceDownFromEvent(event) {
-      let accG = event.accelerationIncludingGravity;
-      if (!accG || accG.z === null) return;
-
-      const z = accG.z || 0;
-      const nextFaceDown = z > FACE_DOWN_Z_THRESHOLD;
-
-      // Only trigger damping on transition into face-down
-      if (!isFaceDown && nextFaceDown) {
-        isFaceDown = true;
-        applyAggressiveDampToActiveRings();
-      } else if (isFaceDown && !nextFaceDown) {
-        isFaceDown = false;
-      }
-    }
-
-    // Play bell sample
     // Play bell sample
     async function playBell(note, intensity = 1, visualDir = null) {
       if (!note) return;
@@ -744,76 +600,25 @@
     
       const duration = buffer.duration;
       const safeDuration = Math.max(duration, 0.05); // guard against super-short buffers
+      const fadeOutTime = 0.02;                      // 20 ms fade
     
-      // --- Sustain behavior ---
-      // sustain = 10 => original behavior (hold until end then tiny fade)
-      // sustain < 10 => exponential/log-perceived fade that ends earlier (dampened)
-      const sustainVal = parseInt(sustainSlider.value, 10);
-    
-      // Always start at current gain
+      // Start at current volume
       gain.gain.setValueAtTime(volumeMaxGain, now);
     
-      // Register ring so face-down can damp it mid-flight
-      const ringRef = { src, gain, ended: false };
-      activeRings.add(ringRef);
+      // Hold until just before the end, then fade to (almost) zero
+      const fadeStart = now + safeDuration - fadeOutTime;
+      gain.gain.setValueAtTime(volumeMaxGain, fadeStart);
+      gain.gain.linearRampToValueAtTime(0.0001, now + safeDuration);
     
-      // Cleanup when it ends
-      const cleanup = () => {
-        ringRef.ended = true;
-        activeRings.delete(ringRef);
-      };
-      src.addEventListener("ended", cleanup);
-    
-      if (sustainVal >= 10) {
-        // Original: hold full volume, fade only at very end
-        const fadeOutTime = 0.02; // 20 ms fade
-        const fadeStart = now + safeDuration - fadeOutTime;
-    
-        gain.gain.setValueAtTime(volumeMaxGain, fadeStart);
-        gain.gain.linearRampToValueAtTime(0.0001, now + safeDuration);
-    
-        src.start(now);
-        src.stop(now + safeDuration);
-      } else {
-        // Rebalanced curve so high sustain values aren't overly aggressive:
-        // 9 should feel closer to old ~5.
-        let t = (sustainVal - 1) / 9; // 0..1
-        t = t * t; // flatten the top end
-    
-        // Aggressive minimum decay (seconds). Clamp so super-short samples still work.
-        const minDecay = Math.min(0.18, safeDuration);
-        // Max decay close to sample duration
-        const maxDecay = safeDuration;
-    
-        // Exponential interpolation => log-perceived fade
-        const ratio = maxDecay / Math.max(minDecay, 0.001);
-        const decayTime = minDecay * Math.pow(ratio, t);
-    
-        // Small hold to preserve the initial transient, then exponential fade
-        const holdTime = Math.min(0.02, decayTime * 0.25);
-        const fadeStart = now + holdTime;
-        const endTime = now + decayTime;
-    
-        gain.gain.setValueAtTime(volumeMaxGain, now);
-        gain.gain.setValueAtTime(volumeMaxGain, fadeStart);
-    
-        // Exponential ramp = "log scale fade" perception
-        gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
-    
-        src.start(now);
-        src.stop(endTime + 0.01);
-      }
-    
-      // If already face-down at ring start, immediately apply the aggressive damp
-      if (isFaceDown) {
-        applyAggressiveDampToActiveRings();
-      }
+      // Start + stop the source
+      src.start(now);
+      src.stop(now + safeDuration);
     
       // --- visual wiggle (unchanged) ---
-      const tVis = Math.min(Math.max(intensity, 0), 1);
+      const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
-      const offset = minOffset + (maxOffset - minOffset) * tVis;
+      const offset = minOffset + (maxOffset - minOffset) * t;
     
       let dir = visualDir || (Math.random() < 0.5 ? "left" : "right");
       let transform;
@@ -835,7 +640,7 @@
         bellRing.style.transform = "translate(0px, 0px) rotate(0deg)";
       }, 180);
     }
-
+    
 
     // ---- MOTION HANDLING ----
     let currentNote = null;
@@ -874,9 +679,6 @@
 
     function handleMotion(event) {
       if (!currentNote) return;
-
-      // Update face-down detection continuously (for mid-ring damping)
-      updateFaceDownFromEvent(event);
 
       let acc = event.acceleration;
       if (!acc || (acc.x === null && acc.y === null && acc.z === null)) {
@@ -962,8 +764,6 @@
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
-      isFaceDown = false;
-      activeRings.clear();
     }
 
     // ---- MOTION PERMISSION (iOS) ----
@@ -1010,10 +810,7 @@
       playScreen.style.background = note.color;
       noteScreen.style.display = "none";
       playScreen.classList.add("active");
-
-      // Show gain control on play screen
-      gainWrapper.classList.add("active");
-
+      volumeWrapper.style.display = "flex";
       startMotionListening();
     }
 
@@ -1022,9 +819,7 @@
       stopMotionListening();
       playScreen.classList.remove("active");
       noteScreen.style.display = "block";
-
-      // Hide gain control when not playing
-      gainWrapper.classList.remove("active");
+      volumeWrapper.style.display = "none";
     }
 
     backBtn.addEventListener("click", showNoteScreen);
