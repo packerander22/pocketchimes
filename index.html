@@ -3,7 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <title>PocketChimes</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+  />
+
+  <!-- Strongly encourage portrait on iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
 
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-3G2QH25N85"></script>
@@ -14,8 +21,10 @@
     gtag('config', 'G-3G2H25N85');
   </script>
 
+  <!-- PWA & theme color -->
   <meta name="theme-color" content="#111827" />
 
+  <!-- Tab favicons (desktop/mobile) -->
   <link rel="icon" type="image/png" sizes="32x32" href="/favicons/favicon_32_transparent.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicons/favicon_16_transparent.png">
   <link rel="shortcut icon" href="/favicons/favicon_32_transparent.png" type="image/png">
@@ -39,19 +48,18 @@
       --shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.35);
       --radius-xl: 1.5rem;
       --radius-full: 999px;
-      --font-main: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      --font-main: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Segoe UI", sans-serif;
 
-      /* Minimal, on-vibe overlay UI */
-      --ui-white: rgba(248, 250, 252, 0.92);
-      --ui-white-soft: rgba(248, 250, 252, 0.72);
-      --ui-white-dim: rgba(248, 250, 252, 0.55);
-      --ui-dark: rgba(2, 6, 23, 0.55);
-      --ui-dark-strong: rgba(2, 6, 23, 0.82);
+      /* Minimal overlay UI that matches vibe */
+      --ui-white: rgba(248, 250, 252, 0.95);
+      --ui-white-dim: rgba(248, 250, 252, 0.65);
+      --ui-shadow: 0 10px 26px rgba(2, 6, 23, 0.28);
+      --ui-stroke: rgba(2, 6, 23, 0.22);
 
-      --track: rgba(248, 250, 252, 0.55);
-      --track-border: rgba(2, 6, 23, 0.22);
-      --thumb: rgba(248, 250, 252, 0.95);
-      --thumb-border: rgba(2, 6, 23, 0.22);
+      --track-top: rgba(248, 250, 252, 0.78);
+      --track-bot: rgba(248, 250, 252, 0.38);
+      --thumb: rgba(248, 250, 252, 0.98);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -65,6 +73,25 @@
       align-items: stretch;
       justify-content: center;
       position: relative;
+    }
+
+    /* Block landscape (best-effort, cross-browser) */
+    @media screen and (orientation: landscape) {
+      body::before {
+        content: "Please rotate your device to portrait mode";
+        position: fixed;
+        inset: 0;
+        background: #020617;
+        color: #f9fafb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        text-align: center;
+        z-index: 9999;
+        padding: 2rem;
+      }
+      body > * { display: none !important; }
     }
 
     .global-logo {
@@ -85,7 +112,8 @@
       padding: 3rem 1.2rem 2.5rem;
     }
 
-    .card, .note-card {
+    .card,
+    .note-card {
       background: radial-gradient(circle at top left, #1f2937 0, #020617 70%);
       border-radius: 1.75rem;
       border: 1px solid #020617;
@@ -159,7 +187,8 @@
       cursor: pointer;
       box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
       transform: translateY(0);
-      transition: transform 0.16s ease-out, box-shadow 0.16s ease-out, filter 0.16s ease-out;
+      transition: transform 0.16s ease-out, box-shadow 0.16s ease-out,
+        filter 0.16s ease-out;
       text-shadow: 0 1px 3px rgba(0,0,0,0.35);
     }
 
@@ -186,8 +215,9 @@
       text-align: center;
       color: #020617;
       padding: 1.2rem;
-      padding-bottom: calc(1.2rem + 92px); /* reserve space for bottom sustain control */
+      padding-bottom: calc(1.2rem + 96px); /* reserve space for bottom sustain control */
     }
+
     .play-screen.active { display: flex; }
 
     .back-btn {
@@ -264,7 +294,7 @@
       margin-bottom: 0.8rem;
     }
 
-    /* ---------- Clean, minimal slider styling (matches vibe) ---------- */
+    /* -------- Clean minimal sliders (no "box") -------- */
     input[type="range"]{
       -webkit-appearance: none;
       appearance: none;
@@ -274,15 +304,13 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    /* WebKit track */
     input[type="range"]::-webkit-slider-runnable-track{
       height: 8px;
       border-radius: 999px;
-      background: linear-gradient(to bottom, rgba(248,250,252,0.70), rgba(248,250,252,0.35));
-      box-shadow: inset 0 0 0 1px var(--track-border);
+      background: linear-gradient(to bottom, var(--track-top), var(--track-bot));
+      box-shadow: inset 0 0 0 1px var(--ui-stroke);
     }
 
-    /* WebKit thumb */
     input[type="range"]::-webkit-slider-thumb{
       -webkit-appearance: none;
       appearance: none;
@@ -290,118 +318,72 @@
       height: 22px;
       border-radius: 999px;
       background: var(--thumb);
-      box-shadow: 0 8px 16px rgba(0,0,0,0.18);
-      border: 1px solid var(--thumb-border);
-      margin-top: -7px; /* centers thumb on 8px track */
+      border: 1px solid rgba(2,6,23,0.18);
+      box-shadow: 0 10px 22px rgba(0,0,0,0.16);
+      margin-top: -7px;
     }
 
-    /* Firefox */
     input[type="range"]::-moz-range-track{
       height: 8px;
       border-radius: 999px;
-      background: linear-gradient(to bottom, rgba(248,250,252,0.70), rgba(248,250,252,0.35));
-      box-shadow: inset 0 0 0 1px var(--track-border);
+      background: linear-gradient(to bottom, var(--track-top), var(--track-bot));
+      box-shadow: inset 0 0 0 1px var(--ui-stroke);
     }
+
     input[type="range"]::-moz-range-thumb{
       width: 22px;
       height: 22px;
       border-radius: 999px;
       background: var(--thumb);
-      border: 1px solid var(--thumb-border);
-      box-shadow: 0 8px 16px rgba(0,0,0,0.18);
+      border: 1px solid rgba(2,6,23,0.18);
+      box-shadow: 0 10px 22px rgba(0,0,0,0.16);
     }
 
-    /* Sustain: fixed bottom, minimal, labels ABOVE (not behind slider) */
-    .sustain-control{
+    /* Gain: left vertical, out of the way */
+    .gain-control {
       position: fixed;
-      left: 50%;
-      transform: translateX(-50%);
-      bottom: calc(12px + env(safe-area-inset-bottom));
-      width: min(360px, 92vw);
-      display: none;
-      flex-direction: column;
-      gap: 0.35rem;
-      z-index: 55;
-      pointer-events: auto;
-    }
-    .sustain-control.active{ display: flex; }
-
-    .sustain-top{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.8rem;
-      color: var(--ui-white);
-      text-shadow: 0 2px 8px rgba(2,6,23,0.45);
-    }
-    .sustain-title{
-      font-size: 0.9rem;
-      font-weight: 800;
-      letter-spacing: 0.02em;
-      opacity: 0.95;
-    }
-    .sustain-value{
-      font-size: 0.92rem;
-      font-weight: 900;
-      opacity: 0.95;
-    }
-    .sustain-sub{
-      font-size: 0.74rem;
-      color: var(--ui-white-dim);
-      text-shadow: 0 2px 8px rgba(2,6,23,0.45);
-      margin-top: -0.15rem;
-    }
-    .sustain-slider{
-      width: 100%;
-      height: 44px; /* touch-friendly */
-    }
-
-    /* Gain: left vertical, minimal, labels ABOVE (not behind slider) */
-    .gain-control{
-      position: fixed;
-      left: 0.75rem;
-      top: 58%;
+      left: 0.85rem;
+      top: 60%;
       transform: translateY(-50%);
-      z-index: 56;
+      z-index: 60;
       display: none;
       flex-direction: column;
       align-items: center;
-      gap: 0.35rem;
+      gap: 0.3rem;
       pointer-events: auto;
     }
-    .gain-control.active{ display: flex; }
+    .gain-control.active { display: flex; }
 
-    .gain-top{
+    .gain-header {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 0.08rem;
+      gap: 0.05rem;
       color: var(--ui-white);
       text-shadow: 0 2px 8px rgba(2,6,23,0.45);
     }
-    .gain-title{
-      font-size: 0.9rem;
+    .gain-title {
+      font-size: 0.86rem;
       font-weight: 800;
       letter-spacing: 0.02em;
-      opacity: 0.95;
     }
-    .gain-value{
-      font-size: 0.9rem;
+    .gain-value {
+      font-size: 0.86rem;
       font-weight: 900;
       opacity: 0.95;
       margin-top: -0.05rem;
     }
-    .gain-hint{
-      font-size: 0.7rem;
+    .gain-hint {
+      font-size: 0.70rem;
       color: var(--ui-white-dim);
       text-shadow: 0 2px 8px rgba(2,6,23,0.45);
-      margin-top: 0.05rem;
       text-align: center;
-      max-width: 76px;
       line-height: 1.15;
+      max-width: 90px;
+      margin-top: 0.05rem;
     }
 
-    .gain-slider{
+    .gain-slider {
       width: 220px;  /* becomes vertical length after rotate */
       height: 44px;
       transform: rotate(-90deg);
@@ -409,19 +391,69 @@
       margin: 0.25rem 0;
     }
 
-    @media (max-width: 400px){
+    /* Sustain: fixed bottom center, labels ABOVE + hint below */
+    .sustain-control {
+      position: fixed;
+      bottom: calc(14px + env(safe-area-inset-bottom));
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(360px, 90vw);
+      display: none;
+      flex-direction: column;
+      gap: 0.35rem;
+      z-index: 60;
+      pointer-events: auto;
+    }
+    .sustain-control.active { display: flex; }
+
+    .sustain-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--ui-white);
+      text-shadow: 0 2px 8px rgba(2,6,23,0.45);
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .sustain-title {
+      font-size: 0.86rem;
+      opacity: 0.95;
+    }
+    .sustain-value {
+      font-size: 0.86rem;
+      font-weight: 900;
+      opacity: 0.95;
+      min-width: 2.2rem;
+      text-align: right;
+    }
+    .sustain-hint {
+      font-size: 0.72rem;
+      color: var(--ui-white-dim);
+      text-shadow: 0 2px 8px rgba(2,6,23,0.45);
+      margin-top: -0.15rem;
+    }
+    .sustain-slider {
+      width: 100%;
+      height: 44px;
+    }
+
+    @media (max-width: 400px) {
       .card, .note-card { padding: 1.2rem 1.2rem 1.3rem; }
       .note-btn { padding: 0.55rem 0.25rem; }
       .gain-slider { width: 205px; }
-      .gain-control { left: 0.55rem; }
+      .gain-control { left: 0.60rem; }
       .sustain-control { width: min(340px, 92vw); }
-      .play-screen { padding-bottom: calc(1.2rem + 88px); }
+      .play-screen { padding-bottom: calc(1.2rem + 92px); }
     }
   </style>
 </head>
 
 <body>
-  <img class="global-logo" src="/favicons/favicon_512_transparent.png" alt="PocketChimes bell logo" />
+  <img
+    class="global-logo"
+    src="/favicons/favicon_512_transparent.png"
+    alt="PocketChimes bell logo"
+  />
 
   <!-- MOTION PERMISSION SCREEN -->
   <div class="app" id="motion-screen" role="main">
@@ -453,12 +485,13 @@
     </div>
   </div>
 
-  <!-- LEFT GAIN CONTROL (minimal, labels above) -->
+  <!-- LEFT GAIN CONTROL -->
   <div class="gain-control" id="gain-wrapper" aria-label="Gain control">
-    <div class="gain-top">
+    <div class="gain-header">
       <div class="gain-title">Gain</div>
       <div class="gain-value" id="gain-value-label">1</div>
     </div>
+
     <input
       type="range"
       id="gain-slider"
@@ -469,16 +502,17 @@
       value="1"
       aria-label="Gain slider"
     />
+
     <div class="gain-hint">higher can distort</div>
   </div>
 
-  <!-- BOTTOM SUSTAIN CONTROL (minimal, labels above) -->
-  <div class="sustain-control" id="sustain-wrapper">
-    <div class="sustain-top">
-      <div class="sustain-title">Sustain</div>
-      <div class="sustain-value" id="sustain-value-label">10</div>
+  <!-- BOTTOM SUSTAIN CONTROL -->
+  <div class="sustain-control" id="sustain-wrapper" aria-label="Sustain control">
+    <div class="sustain-header">
+      <span class="sustain-title">Sustain</span>
+      <span class="sustain-value" id="sustain-value-label">10</span>
     </div>
-    <div class="sustain-sub">10 = full ring · 1 = damped</div>
+
     <input
       type="range"
       id="sustain-slider"
@@ -489,6 +523,8 @@
       value="10"
       aria-label="Sustain slider"
     />
+
+    <div class="sustain-hint">10 = full · 1 = damped</div>
   </div>
 
   <!-- PLAY SCREEN -->
@@ -515,7 +551,7 @@
   </div>
 
   <script>
-    // ----- SCREEN WAKE LOCK -----
+    // ----- SCREEN WAKE LOCK: keep device awake while bell is ringing (motion only) -----
     let wakeLock = null;
     const wakeLockSupported = "wakeLock" in navigator;
 
@@ -529,12 +565,13 @@
       }
     }
 
+    // Called only for motion-triggered rings (not taps)
     function ensureWakeLock() {
       if (!wakeLockSupported) return;
       if (!wakeLock) requestWakeLock();
     }
 
-    // ----- NOTES -----
+    // ----- NOTE DEFINITIONS: chromatic C5–B7 -----
     const PITCHES = [
       { name: "C",  color: "#FF3B30" },
       { name: "C#", color: "#FF2D92" },
@@ -552,6 +589,7 @@
 
     const OCTAVES = [5, 6, 7];
     const NOTES = [];
+
     OCTAVES.forEach((oct) => {
       PITCHES.forEach((p) => {
         const id = `${p.name}${oct}`;
@@ -563,11 +601,16 @@
         else if (oct === 6) label = p.name;
         else label = `${p.name} (High)`;
 
-        NOTES.push({ id, label, file: `audio/${encodedFile}`, color: p.color });
+        NOTES.push({
+          id,
+          label,
+          file: `audio/${encodedFile}`,
+          color: p.color,
+        });
       });
     });
 
-    // ---- DOM ----
+    // ---- DOM ELEMENTS ----
     const motionScreen  = document.getElementById("motion-screen");
     const noteScreen    = document.getElementById("note-screen");
     const playScreen    = document.getElementById("play-screen");
@@ -587,28 +630,33 @@
     const sustainSlider     = document.getElementById("sustain-slider");
     const sustainValueLabel = document.getElementById("sustain-value-label");
 
-    // ---- AUDIO ----
+    // ---- AUDIO (sample based) ----
     let audioCtx = null;
     let volumeMaxGain = 1.0;
     const noteBuffers = new Map();
+
     let preloadAllNotesPromise = null;
 
     function ensureAudioCtx() {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
-      if (!audioCtx || audioCtx.state === "closed") audioCtx = new AudioCtx();
+      if (!audioCtx || audioCtx.state === "closed") {
+        audioCtx = new AudioCtx();
+      }
     }
 
     async function resumeAudioCtx() {
       ensureAudioCtx();
       if (!audioCtx) return;
       if (audioCtx.state === "suspended") {
-        try { await audioCtx.resume(); } catch(e) { console.warn("Audio resume error", e); }
+        try { await audioCtx.resume(); } catch (e) { console.warn("Audio resume error", e); }
       }
     }
 
     function resetAudioContextOnReturn() {
-      if (audioCtx && audioCtx.state !== "closed") audioCtx.close().catch(() => {});
+      if (audioCtx && audioCtx.state !== "closed") {
+        audioCtx.close().catch(() => {});
+      }
       audioCtx = null;
     }
 
@@ -626,9 +674,13 @@
 
     function preloadAllNotes() {
       if (preloadAllNotesPromise) return preloadAllNotesPromise;
+
       preloadAllNotesPromise = Promise.all(
         NOTES.map(n => loadNoteBuffer(n).catch(() => null))
-      ).then(() => console.log("All notes preloaded"));
+      ).then(() => {
+        console.log("All notes preloaded");
+      });
+
       return preloadAllNotesPromise;
     }
 
@@ -657,30 +709,22 @@
       sustainValueLabel.textContent = sustainSlider.value;
     });
 
-    // ---- SUSTAIN CURVE: smooth + each step lower is incrementally more aggressive ----
-    // Stable, monotonic: decayTime = max(minDecay, duration * (s/10)^p)
-    function computeDecayTimeSeconds(sustainVal, safeDuration) {
+    // ---- SUSTAIN: linear increments for LENGTH, exponential curve for FADE ----
+    // 10 -> 1.0x duration, 1 -> 0.1x duration (linear mapping)
+    function computeDecayTimeSeconds(sustainVal, fullDuration) {
       const s = Math.max(1, Math.min(10, sustainVal));
-      const minDecay = Math.min(0.18, safeDuration); // sustain=1 extreme
-      const p = 2.8; // bigger => increasingly aggressive as you go lower
-      const factor = Math.pow(s / 10, p);
-      return Math.max(minDecay, safeDuration * factor);
+      const ratio = 0.1 + (s - 1) * (0.9 / 9); // 1–10 -> 0.1–1.0
+      return fullDuration * ratio;
     }
 
-    // ---- Face-down mute: NO delay, but VERY specific & cannot trigger during motion ----
-    // Requirements:
-    //  - Only while a bell is ringing
-    //  - Only when very close to fully screen-down (gravity vector nearly +Z)
-    //  - Only when device is very still AND not inSwing
-    //  - One-shot per ring window
+    // ---- FACE-DOWN MUTE: instant, but extremely strict + only while ringing + cannot trigger during motion ----
+    const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
 
-    const activeRings = new Set();
-
-    // Strict orientation thresholds
-    const FACE_DOWN_Z_STRICT = 9.65;  // extremely close to +9.8
-    const FACE_DOWN_XY_MAX   = 0.9;   // almost perfectly flat
-    const STILL_ACCEL_MAX    = 0.12;  // cannot trigger during motion
+    // Must be almost perfectly screen-down and basically perfectly still.
+    const FACE_DOWN_Z_STRICT = 9.65; // close to +9.8
+    const FACE_DOWN_XY_MAX   = 0.9;  // nearly flat
+    const STILL_ACCEL_MAX    = 0.12; // must be very still
 
     function getAccelMag(a) {
       if (!a) return Infinity;
@@ -695,10 +739,12 @@
       }
       if (faceDownTriggeredThisRingWindow) return;
 
+      // Only allow when not inSwing (prevents any trigger during motion)
+      if (inSwing) return;
+
       const g = event.accelerationIncludingGravity;
       if (!g || g.z === null || g.x === null || g.y === null) return;
 
-      // Must be truly face-down
       const gx = g.x || 0;
       const gy = g.y || 0;
       const gz = g.z || 0;
@@ -708,16 +754,14 @@
         (Math.abs(gx) <= FACE_DOWN_XY_MAX) &&
         (Math.abs(gy) <= FACE_DOWN_XY_MAX);
 
-      // Must be still (prevents during swing or any motion)
       const still = getAccelMag(event.acceleration) <= STILL_ACCEL_MAX;
 
-      if (nearFlatDown && still && !inSwing) {
+      if (nearFlatDown && still) {
         faceDownTriggeredThisRingWindow = true;
-        applyAggressiveDampToActiveRings(); // tuned to sustain=1/10
+        applyAggressiveDampToActiveRings(); // exact same as sustain=1/10
       }
     }
 
-    // ---- Face-down damping: exactly the same envelope as sustain=1/10 ----
     function applyAggressiveDampToActiveRings() {
       if (!audioCtx) return;
       const now = audioCtx.currentTime;
@@ -726,7 +770,7 @@
         if (!r || r.ended) return;
 
         const aggressiveDecayTime = Math.min(0.18, r.safeDuration || 0.18);
-        const holdTime = Math.min(0.02, aggressiveDecayTime * 0.25);
+        const holdTime = 0.015;
 
         try {
           if (typeof r.gain.gain.cancelAndHoldAtTime === "function") {
@@ -777,7 +821,7 @@
       const ringRef = { src, gain, ended: false, safeDuration };
       activeRings.add(ringRef);
 
-      // One-shot face-down per ring window
+      // One-shot per ring window
       faceDownTriggeredThisRingWindow = false;
 
       const cleanup = () => {
@@ -792,7 +836,7 @@
       const sustainVal = parseInt(sustainSlider.value, 10);
 
       if (sustainVal >= 10) {
-        // Full sustain: unchanged behavior
+        // Full sustain: untouched original sample length
         const fadeOutTime = 0.02;
         const fadeStart = now + safeDuration - fadeOutTime;
 
@@ -802,15 +846,15 @@
         src.start(now);
         src.stop(now + safeDuration);
       } else {
-        // Damped: smooth, monotonic, incrementally more aggressive lower values
+        // Linear increments for length, exponential curve for fade
         const decayTime = computeDecayTimeSeconds(sustainVal, safeDuration);
-
-        const holdTime = Math.min(0.02, decayTime * 0.25);
-        const fadeStart = now + holdTime;
         const endTime = now + decayTime;
 
+        // tiny hold to preserve attack / avoid click
+        const holdTime = 0.015;
+
         gain.gain.setValueAtTime(volumeMaxGain, now);
-        gain.gain.setValueAtTime(volumeMaxGain, fadeStart);
+        gain.gain.setValueAtTime(volumeMaxGain, now + holdTime);
         gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
 
         src.start(now);
@@ -818,28 +862,37 @@
       }
 
       // --- visual wiggle (unchanged) ---
-      const tVis = Math.min(Math.max(intensity, 0), 1);
+      const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
-      const offset = minOffset + (maxOffset - minOffset) * tVis;
+      const offset = minOffset + (maxOffset - minOffset) * t;
 
       let dir = visualDir || (Math.random() < 0.5 ? "left" : "right");
       let transform;
 
-      if (dir === "left") transform = `translate(${-offset}px, 0px) rotate(0deg)`;
-      else if (dir === "right") transform = `translate(${offset}px, 0px) rotate(0deg)`;
-      else if (dir === "up") transform = `translate(0px, ${-offset}px) rotate(0deg)`;
-      else if (dir === "down") transform = `translate(0px, ${offset}px) rotate(0deg)`;
-      else transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * offset}deg)`;
+      if (dir === "left") {
+        transform = `translate(${-offset}px, 0px) rotate(0deg)`;
+      } else if (dir === "right") {
+        transform = `translate(${offset}px, 0px) rotate(0deg)`;
+      } else if (dir === "up") {
+        transform = `translate(0px, ${-offset}px) rotate(0deg)`;
+      } else if (dir === "down") {
+        transform = `translate(0px, ${offset}px) rotate(0deg)`;
+      } else {
+        transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * offset}deg)`;
+      }
 
       bellRing.style.transform = transform;
-      setTimeout(() => { bellRing.style.transform = "translate(0px, 0px) rotate(0deg)"; }, 180);
+      setTimeout(() => {
+        bellRing.style.transform = "translate(0px, 0px) rotate(0deg)";
+      }, 180);
     }
 
     // ---- MOTION HANDLING ----
     let currentNote = null;
     let lastRingTime = 0;
 
+    // Swing detection constants (tuned by feel)
     const MIN_INTERVAL   = 200;
     const DELTA_RING_MIN = 3.0;
     const DELTA_RING_MAX = 10.0;
@@ -866,7 +919,7 @@
     function handleMotion(event) {
       if (!currentNote) return;
 
-      // Face-down check (instant, but extremely strict + stillness + not inSwing)
+      // Face-down mute check (instant, extremely strict, only while ringing, and not inSwing)
       checkFaceDownStrictInstant(event);
 
       let acc = event.acceleration;
@@ -883,7 +936,9 @@
 
       if (lastMagnitude === null || lastAx === null) {
         lastMagnitude = magnitude;
-        lastAx = ax; lastAy = ay; lastAz = az;
+        lastAx = ax;
+        lastAy = ay;
+        lastAz = az;
         return;
       }
 
@@ -895,25 +950,36 @@
       const absDelta    = Math.abs(signedDelta);
       const now         = performance.now();
 
-      if (absDelta < RESET_DELTA) inSwing = false;
+      if (absDelta < RESET_DELTA) {
+        inSwing = false;
+      }
 
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
       const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
-      const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
+      const changedDirection =
+        prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
+
       const justReversed = wasBuilding && changedDirection;
 
-      if (!inSwing && justReversed && now - lastRingTime > MIN_INTERVAL) {
+      if (!inSwing &&
+          justReversed &&
+          now - lastRingTime > MIN_INTERVAL) {
+
         const peak = Math.abs(lastDelta);
+
         if (peak >= DELTA_RING_MIN) {
           inSwing = true;
           lastRingTime = now;
 
-          const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
-          const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
+          const clamped =
+            Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
+          const intensity =
+            (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
 
           const visualDir = computeVisualDirFromJerk(jx, jy, jz);
 
+          // Only motion-triggered rings request wake lock
           ensureWakeLock();
           playBell(currentNote, intensity, visualDir);
         }
@@ -921,7 +987,9 @@
 
       lastMagnitude = magnitude;
       lastDelta     = signedDelta;
-      lastAx = ax; lastAy = ay; lastAz = az;
+      lastAx = ax;
+      lastAy = ay;
+      lastAz = az;
     }
 
     function startMotionListening() {
@@ -946,8 +1014,10 @@
     // ---- MOTION PERMISSION (iOS) ----
     async function requestMotionPermission() {
       try {
-        if (typeof DeviceMotionEvent !== "undefined" &&
-            typeof DeviceMotionEvent.requestPermission === "function") {
+        if (
+          typeof DeviceMotionEvent !== "undefined" &&
+          typeof DeviceMotionEvent.requestPermission === "function"
+        ) {
           const res = await DeviceMotionEvent.requestPermission();
           return res === "granted";
         } else {
@@ -980,6 +1050,7 @@
       currentNote = note;
       playNoteLabel.textContent = note.label;
       playScreen.style.background = note.color;
+
       noteScreen.style.display = "none";
       playScreen.classList.add("active");
 
@@ -1016,6 +1087,7 @@
       }
     });
 
+    // ---- INIT NOTE BUTTONS ----
     function initNoteButtons() {
       NOTES.forEach((n) => {
         const btn = document.createElement("button");
@@ -1034,13 +1106,16 @@
         noteGrid.appendChild(btn);
       });
     }
+
     initNoteButtons();
 
+    // Auto-skip permission screen on platforms without explicit API
     window.addEventListener("load", () => {
       const needsExplicitPermission =
         typeof DeviceMotionEvent !== "undefined" &&
         typeof DeviceMotionEvent.requestPermission === "function";
 
+      // Preload notes as soon as possible on platforms that allow it
       preloadAllNotes();
 
       if (!needsExplicitPermission) {
@@ -1050,10 +1125,17 @@
       }
     });
 
-    window.addEventListener("touchstart", () => { resumeAudioCtx(); }, { passive: true });
+    window.addEventListener(
+      "touchstart",
+      () => { resumeAudioCtx(); },
+      { passive: true }
+    );
 
+    // Audio reset on visibility changes / navigation events
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) resetAudioContextOnReturn();
+      if (!document.hidden) {
+        resetAudioContextOnReturn();
+      }
     });
 
     window.addEventListener("pageshow", () => { resetAudioContextOnReturn(); });
