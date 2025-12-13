@@ -8,10 +8,6 @@
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
   />
 
-  <!-- Strongly encourage portrait on iOS PWA -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-3G2QH25N85"></script>
   <script>
@@ -32,21 +28,21 @@
   <link rel="manifest" href="/favicons/site.webmanifest">
 
   <style>
+    /* Use a JS-driven --vh to avoid iOS/rotation viewport bugs */
     html, body {
+      width: 100%;
+      height: calc(var(--vh, 1vh) * 100);
       overflow: hidden;
       overscroll-behavior: none;
       touch-action: none;
-      position: fixed;
-      width: 100%;
-      height: 100%;
+      margin: 0;
+      padding: 0;
     }
 
     :root {
       --bg: #111827;
       --text: #f9fafb;
-      --card: #1f2937;
       --shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.35);
-      --radius-xl: 1.5rem;
       --radius-full: 999px;
       --font-main: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
         "Segoe UI", sans-serif;
@@ -54,7 +50,6 @@
       /* Minimal overlay UI that matches vibe */
       --ui-white: rgba(248, 250, 252, 0.95);
       --ui-white-dim: rgba(248, 250, 252, 0.65);
-      --ui-shadow: 0 10px 26px rgba(2, 6, 23, 0.28);
       --ui-stroke: rgba(2, 6, 23, 0.22);
 
       --track-top: rgba(248, 250, 252, 0.78);
@@ -62,38 +57,20 @@
       --thumb: rgba(248, 250, 252, 0.98);
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
 
     body {
       font-family: var(--font-main);
       background: radial-gradient(circle at top, #111827 0, #020617 55%);
       color: var(--text);
-      min-height: 100vh;
+      min-height: calc(var(--vh, 1vh) * 100);
       display: flex;
       align-items: stretch;
       justify-content: center;
       position: relative;
     }
 
-    /* Block landscape (best-effort, cross-browser) */
-    @media screen and (orientation: landscape) {
-      body::before {
-        content: "Please rotate your device to portrait mode";
-        position: fixed;
-        inset: 0;
-        background: #020617;
-        color: #f9fafb;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.1rem;
-        text-align: center;
-        z-index: 9999;
-        padding: 2rem;
-      }
-      body > * { display: none !important; }
-    }
-
+    /* Global logo */
     .global-logo {
       position: fixed;
       top: 1.1rem;
@@ -186,9 +163,7 @@
       color: #0b1120;
       cursor: pointer;
       box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
-      transform: translateY(0);
-      transition: transform 0.16s ease-out, box-shadow 0.16s ease-out,
-        filter 0.16s ease-out;
+      transition: transform 0.16s ease-out, box-shadow 0.16s ease-out, filter 0.16s ease-out;
       text-shadow: 0 1px 3px rgba(0,0,0,0.35);
     }
 
@@ -215,7 +190,7 @@
       text-align: center;
       color: #020617;
       padding: 1.2rem;
-      padding-bottom: calc(1.2rem + 96px); /* reserve space for bottom sustain control */
+      padding-bottom: calc(1.2rem + 96px); /* room for sustain in portrait */
     }
 
     .play-screen.active { display: flex; }
@@ -294,7 +269,7 @@
       margin-bottom: 0.8rem;
     }
 
-    /* -------- Clean minimal sliders (no "box") -------- */
+    /* -------- Clean minimal sliders -------- */
     input[type="range"]{
       -webkit-appearance: none;
       appearance: none;
@@ -339,7 +314,7 @@
       box-shadow: 0 10px 22px rgba(0,0,0,0.16);
     }
 
-    /* Gain: left vertical, out of the way */
+    /* Gain: left vertical */
     .gain-control {
       position: fixed;
       left: 0.85rem;
@@ -362,17 +337,8 @@
       color: var(--ui-white);
       text-shadow: 0 2px 8px rgba(2,6,23,0.45);
     }
-    .gain-title {
-      font-size: 0.86rem;
-      font-weight: 800;
-      letter-spacing: 0.02em;
-    }
-    .gain-value {
-      font-size: 0.86rem;
-      font-weight: 900;
-      opacity: 0.95;
-      margin-top: -0.05rem;
-    }
+    .gain-title { font-size: 0.86rem; font-weight: 800; letter-spacing: 0.02em; }
+    .gain-value { font-size: 0.86rem; font-weight: 900; opacity: 0.95; margin-top: -0.05rem; }
     .gain-hint {
       font-size: 0.70rem;
       color: var(--ui-white-dim);
@@ -384,14 +350,14 @@
     }
 
     .gain-slider {
-      width: 220px;  /* becomes vertical length after rotate */
+      width: 220px;
       height: 44px;
       transform: rotate(-90deg);
       touch-action: none;
       margin: 0.25rem 0;
     }
 
-    /* Sustain: fixed bottom center, labels ABOVE + hint below */
+    /* Sustain: bottom center (portrait) */
     .sustain-control {
       position: fixed;
       bottom: calc(14px + env(safe-area-inset-bottom));
@@ -415,10 +381,7 @@
       font-weight: 800;
       letter-spacing: 0.02em;
     }
-    .sustain-title {
-      font-size: 0.86rem;
-      opacity: 0.95;
-    }
+    .sustain-title { font-size: 0.86rem; opacity: 0.95; }
     .sustain-value {
       font-size: 0.86rem;
       font-weight: 900;
@@ -432,9 +395,34 @@
       text-shadow: 0 2px 8px rgba(2,6,23,0.45);
       margin-top: -0.15rem;
     }
-    .sustain-slider {
-      width: 100%;
-      height: 44px;
+    .sustain-slider { width: 100%; height: 44px; }
+
+    /* Landscape layout fix: put sustain bottom-right so it doesn't steal vertical space */
+    @media (orientation: landscape) {
+      .play-screen {
+        padding-bottom: 1.2rem; /* remove reserved bottom space in landscape */
+      }
+      .sustain-control {
+        left: auto;
+        right: calc(14px + env(safe-area-inset-right));
+        bottom: calc(14px + env(safe-area-inset-bottom));
+        transform: none;
+        width: min(320px, 44vw);
+      }
+      .gain-control {
+        top: 55%;
+      }
+      .global-logo {
+        top: 0.6rem;
+        width: 78px;
+      }
+      .play-note-label {
+        font-size: 2.7rem;
+        margin-bottom: 0.7rem;
+      }
+      .hint-text {
+        margin-bottom: 0.4rem;
+      }
     }
 
     @media (max-width: 400px) {
@@ -449,11 +437,7 @@
 </head>
 
 <body>
-  <img
-    class="global-logo"
-    src="/favicons/favicon_512_transparent.png"
-    alt="PocketChimes bell logo"
-  />
+  <img class="global-logo" src="/favicons/favicon_512_transparent.png" alt="PocketChimes bell logo" />
 
   <!-- MOTION PERMISSION SCREEN -->
   <div class="app" id="motion-screen" role="main">
@@ -463,9 +447,7 @@
         This app uses your phone’s motion sensors so you can swing it like a handbell.
         On iPhone, you’ll be asked to allow motion access.
       </p>
-      <button class="primary-btn" id="start-btn" type="button">
-        Enable motion & start
-      </button>
+      <button class="primary-btn" id="start-btn" type="button">Enable motion & start</button>
     </div>
   </div>
 
@@ -476,12 +458,8 @@
       <div class="note-subtitle">
         Full chromatic C5–B7 (top note B7). Each note uses the bell color palette.
       </div>
-
       <div class="note-grid" id="note-grid"></div>
-
-      <div class="note-help">
-        Swing to ring. You’ll see your note and bell on the next screen.
-      </div>
+      <div class="note-help">Swing to ring. You’ll see your note and bell on the next screen.</div>
     </div>
   </div>
 
@@ -491,7 +469,6 @@
       <div class="gain-title">Gain</div>
       <div class="gain-value" id="gain-value-label">1</div>
     </div>
-
     <input
       type="range"
       id="gain-slider"
@@ -502,17 +479,15 @@
       value="1"
       aria-label="Gain slider"
     />
-
     <div class="gain-hint">higher can distort</div>
   </div>
 
-  <!-- BOTTOM SUSTAIN CONTROL -->
+  <!-- SUSTAIN CONTROL -->
   <div class="sustain-control" id="sustain-wrapper" aria-label="Sustain control">
     <div class="sustain-header">
       <span class="sustain-title">Sustain</span>
       <span class="sustain-value" id="sustain-value-label">10</span>
     </div>
-
     <input
       type="range"
       id="sustain-slider"
@@ -523,7 +498,6 @@
       value="10"
       aria-label="Sustain slider"
     />
-
     <div class="sustain-hint">10 = full · 1 = damped</div>
   </div>
 
@@ -551,7 +525,19 @@
   </div>
 
   <script>
-    // ----- SCREEN WAKE LOCK: keep device awake while bell is ringing (motion only) -----
+    // --- Fix viewport height on rotation (prevents layout break) ---
+    function setVhUnit() {
+      document.documentElement.style.setProperty("--vh", `${window.innerHeight * 0.01}px`);
+    }
+    setVhUnit();
+    window.addEventListener("resize", setVhUnit);
+    window.addEventListener("orientationchange", () => {
+      // some browsers need a tick after rotation
+      setTimeout(setVhUnit, 50);
+      setTimeout(setVhUnit, 250);
+    });
+
+    // ----- SCREEN WAKE LOCK -----
     let wakeLock = null;
     const wakeLockSupported = "wakeLock" in navigator;
 
@@ -565,13 +551,12 @@
       }
     }
 
-    // Called only for motion-triggered rings (not taps)
     function ensureWakeLock() {
       if (!wakeLockSupported) return;
       if (!wakeLock) requestWakeLock();
     }
 
-    // ----- NOTE DEFINITIONS: chromatic C5–B7 -----
+    // ----- NOTE DEFINITIONS -----
     const PITCHES = [
       { name: "C",  color: "#FF3B30" },
       { name: "C#", color: "#FF2D92" },
@@ -589,7 +574,6 @@
 
     const OCTAVES = [5, 6, 7];
     const NOTES = [];
-
     OCTAVES.forEach((oct) => {
       PITCHES.forEach((p) => {
         const id = `${p.name}${oct}`;
@@ -601,16 +585,11 @@
         else if (oct === 6) label = p.name;
         else label = `${p.name} (High)`;
 
-        NOTES.push({
-          id,
-          label,
-          file: `audio/${encodedFile}`,
-          color: p.color,
-        });
+        NOTES.push({ id, label, file: `audio/${encodedFile}`, color: p.color });
       });
     });
 
-    // ---- DOM ELEMENTS ----
+    // ---- DOM ----
     const motionScreen  = document.getElementById("motion-screen");
     const noteScreen    = document.getElementById("note-screen");
     const playScreen    = document.getElementById("play-screen");
@@ -630,19 +609,16 @@
     const sustainSlider     = document.getElementById("sustain-slider");
     const sustainValueLabel = document.getElementById("sustain-value-label");
 
-    // ---- AUDIO (sample based) ----
+    // ---- AUDIO ----
     let audioCtx = null;
     let volumeMaxGain = 1.0;
     const noteBuffers = new Map();
-
     let preloadAllNotesPromise = null;
 
     function ensureAudioCtx() {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
-      if (!audioCtx || audioCtx.state === "closed") {
-        audioCtx = new AudioCtx();
-      }
+      if (!audioCtx || audioCtx.state === "closed") audioCtx = new AudioCtx();
     }
 
     async function resumeAudioCtx() {
@@ -654,9 +630,7 @@
     }
 
     function resetAudioContextOnReturn() {
-      if (audioCtx && audioCtx.state !== "closed") {
-        audioCtx.close().catch(() => {});
-      }
+      if (audioCtx && audioCtx.state !== "closed") audioCtx.close().catch(() => {});
       audioCtx = null;
     }
 
@@ -674,13 +648,9 @@
 
     function preloadAllNotes() {
       if (preloadAllNotesPromise) return preloadAllNotesPromise;
-
       preloadAllNotesPromise = Promise.all(
         NOTES.map(n => loadNoteBuffer(n).catch(() => null))
-      ).then(() => {
-        console.log("All notes preloaded");
-      });
-
+      ).then(() => console.log("All notes preloaded"));
       return preloadAllNotesPromise;
     }
 
@@ -709,22 +679,20 @@
       sustainValueLabel.textContent = sustainSlider.value;
     });
 
-    // ---- SUSTAIN: linear increments for LENGTH, exponential curve for FADE ----
-    // 10 -> 1.0x duration, 1 -> 0.1x duration (linear mapping)
+    // ---- SUSTAIN: linear steps for length, exponential fade curve ----
     function computeDecayTimeSeconds(sustainVal, fullDuration) {
       const s = Math.max(1, Math.min(10, sustainVal));
       const ratio = 0.1 + (s - 1) * (0.9 / 9); // 1–10 -> 0.1–1.0
       return fullDuration * ratio;
     }
 
-    // ---- FACE-DOWN MUTE: instant, but extremely strict + only while ringing + cannot trigger during motion ----
+    // ---- FACE-DOWN MUTE: instant, strict, only while ringing, cannot trigger during motion ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
 
-    // Must be almost perfectly screen-down and basically perfectly still.
-    const FACE_DOWN_Z_STRICT = 9.65; // close to +9.8
-    const FACE_DOWN_XY_MAX   = 0.9;  // nearly flat
-    const STILL_ACCEL_MAX    = 0.12; // must be very still
+    const FACE_DOWN_Z_STRICT = 9.65;
+    const FACE_DOWN_XY_MAX   = 0.9;
+    const STILL_ACCEL_MAX    = 0.12;
 
     function getAccelMag(a) {
       if (!a) return Infinity;
@@ -738,8 +706,6 @@
         return;
       }
       if (faceDownTriggeredThisRingWindow) return;
-
-      // Only allow when not inSwing (prevents any trigger during motion)
       if (inSwing) return;
 
       const g = event.accelerationIncludingGravity;
@@ -758,7 +724,7 @@
 
       if (nearFlatDown && still) {
         faceDownTriggeredThisRingWindow = true;
-        applyAggressiveDampToActiveRings(); // exact same as sustain=1/10
+        applyAggressiveDampToActiveRings();
       }
     }
 
@@ -797,9 +763,7 @@
       ensureAudioCtx();
       if (!audioCtx) return;
 
-      if (audioCtx.state === "suspended") {
-        await audioCtx.resume();
-      }
+      if (audioCtx.state === "suspended") await audioCtx.resume();
 
       const buffer = await loadNoteBuffer(note);
       if (!buffer) return;
@@ -814,29 +778,23 @@
 
       const safeDuration = Math.max(buffer.duration, 0.05);
 
-      // Start at current gain
       gain.gain.setValueAtTime(volumeMaxGain, now);
 
-      // Register ring (so face-down can damp mid-ring)
       const ringRef = { src, gain, ended: false, safeDuration };
       activeRings.add(ringRef);
-
-      // One-shot per ring window
       faceDownTriggeredThisRingWindow = false;
 
       const cleanup = () => {
         ringRef.ended = true;
         activeRings.delete(ringRef);
-        if (activeRings.size === 0) {
-          faceDownTriggeredThisRingWindow = false;
-        }
+        if (activeRings.size === 0) faceDownTriggeredThisRingWindow = false;
       };
       src.addEventListener("ended", cleanup);
 
       const sustainVal = parseInt(sustainSlider.value, 10);
 
       if (sustainVal >= 10) {
-        // Full sustain: untouched original sample length
+        // Full sustain: untouched original duration
         const fadeOutTime = 0.02;
         const fadeStart = now + safeDuration - fadeOutTime;
 
@@ -846,11 +804,9 @@
         src.start(now);
         src.stop(now + safeDuration);
       } else {
-        // Linear increments for length, exponential curve for fade
+        // Linear length scaling, exponential fade curve
         const decayTime = computeDecayTimeSeconds(sustainVal, safeDuration);
         const endTime = now + decayTime;
-
-        // tiny hold to preserve attack / avoid click
         const holdTime = 0.015;
 
         gain.gain.setValueAtTime(volumeMaxGain, now);
@@ -861,7 +817,7 @@
         src.stop(endTime + 0.01);
       }
 
-      // --- visual wiggle (unchanged) ---
+      // Visual wiggle
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
@@ -870,29 +826,20 @@
       let dir = visualDir || (Math.random() < 0.5 ? "left" : "right");
       let transform;
 
-      if (dir === "left") {
-        transform = `translate(${-offset}px, 0px) rotate(0deg)`;
-      } else if (dir === "right") {
-        transform = `translate(${offset}px, 0px) rotate(0deg)`;
-      } else if (dir === "up") {
-        transform = `translate(0px, ${-offset}px) rotate(0deg)`;
-      } else if (dir === "down") {
-        transform = `translate(0px, ${offset}px) rotate(0deg)`;
-      } else {
-        transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * offset}deg)`;
-      }
+      if (dir === "left") transform = `translate(${-offset}px, 0px) rotate(0deg)`;
+      else if (dir === "right") transform = `translate(${offset}px, 0px) rotate(0deg)`;
+      else if (dir === "up") transform = `translate(0px, ${-offset}px) rotate(0deg)`;
+      else if (dir === "down") transform = `translate(0px, ${offset}px) rotate(0deg)`;
+      else transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * offset}deg)`;
 
       bellRing.style.transform = transform;
-      setTimeout(() => {
-        bellRing.style.transform = "translate(0px, 0px) rotate(0deg)";
-      }, 180);
+      setTimeout(() => { bellRing.style.transform = "translate(0px, 0px) rotate(0deg)"; }, 180);
     }
 
     // ---- MOTION HANDLING ----
     let currentNote = null;
     let lastRingTime = 0;
 
-    // Swing detection constants (tuned by feel)
     const MIN_INTERVAL   = 200;
     const DELTA_RING_MIN = 3.0;
     const DELTA_RING_MAX = 10.0;
@@ -904,9 +851,7 @@
     let lastAx = null, lastAy = null, lastAz = null;
 
     function computeVisualDirFromJerk(jx, jy, jz) {
-      const absX = Math.abs(jx);
-      const absY = Math.abs(jy);
-      const absZ = Math.abs(jz);
+      const absX = Math.abs(jx), absY = Math.abs(jy), absZ = Math.abs(jz);
       const maxComp = Math.max(absX, absY, absZ);
       const MIN_JERK = 0.3;
 
@@ -919,7 +864,6 @@
     function handleMotion(event) {
       if (!currentNote) return;
 
-      // Face-down mute check (instant, extremely strict, only while ringing, and not inSwing)
       checkFaceDownStrictInstant(event);
 
       let acc = event.acceleration;
@@ -928,68 +872,47 @@
       }
       if (!acc) return;
 
-      const ax = acc.x || 0;
-      const ay = acc.y || 0;
-      const az = acc.z || 0;
-
+      const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
       const magnitude = Math.sqrt(ax*ax + ay*ay + az*az);
 
       if (lastMagnitude === null || lastAx === null) {
         lastMagnitude = magnitude;
-        lastAx = ax;
-        lastAy = ay;
-        lastAz = az;
+        lastAx = ax; lastAy = ay; lastAz = az;
         return;
       }
 
-      const jx = ax - lastAx;
-      const jy = ay - lastAy;
-      const jz = az - lastAz;
+      const jx = ax - lastAx, jy = ay - lastAy, jz = az - lastAz;
 
       const signedDelta = magnitude - lastMagnitude;
-      const absDelta    = Math.abs(signedDelta);
-      const now         = performance.now();
+      const absDelta = Math.abs(signedDelta);
+      const now = performance.now();
 
-      if (absDelta < RESET_DELTA) {
-        inSwing = false;
-      }
+      if (absDelta < RESET_DELTA) inSwing = false;
 
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
       const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
-      const changedDirection =
-        prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
-
+      const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
       const justReversed = wasBuilding && changedDirection;
 
-      if (!inSwing &&
-          justReversed &&
-          now - lastRingTime > MIN_INTERVAL) {
-
+      if (!inSwing && justReversed && now - lastRingTime > MIN_INTERVAL) {
         const peak = Math.abs(lastDelta);
-
         if (peak >= DELTA_RING_MIN) {
           inSwing = true;
           lastRingTime = now;
 
-          const clamped =
-            Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
-          const intensity =
-            (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
-
+          const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
+          const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
           const visualDir = computeVisualDirFromJerk(jx, jy, jz);
 
-          // Only motion-triggered rings request wake lock
           ensureWakeLock();
           playBell(currentNote, intensity, visualDir);
         }
       }
 
       lastMagnitude = magnitude;
-      lastDelta     = signedDelta;
-      lastAx = ax;
-      lastAy = ay;
-      lastAz = az;
+      lastDelta = signedDelta;
+      lastAx = ax; lastAy = ay; lastAz = az;
     }
 
     function startMotionListening() {
@@ -1014,15 +937,12 @@
     // ---- MOTION PERMISSION (iOS) ----
     async function requestMotionPermission() {
       try {
-        if (
-          typeof DeviceMotionEvent !== "undefined" &&
-          typeof DeviceMotionEvent.requestPermission === "function"
-        ) {
+        if (typeof DeviceMotionEvent !== "undefined" &&
+            typeof DeviceMotionEvent.requestPermission === "function") {
           const res = await DeviceMotionEvent.requestPermission();
           return res === "granted";
-        } else {
-          return true;
         }
+        return true;
       } catch (err) {
         console.error("Motion permission error:", err);
         return false;
@@ -1033,7 +953,6 @@
     startBtn.addEventListener("click", async () => {
       await resumeAudioCtx();
       const granted = await requestMotionPermission();
-
       if (!granted) {
         alert("Motion access hasn't been granted yet. Close this window and try again.");
         return;
@@ -1045,6 +964,8 @@
       noteScreen.style.display   = "block";
       showHeadphoneWarningOnce();
     });
+
+    let headphoneWarningShown = false; // (kept here to avoid hoist confusion)
 
     function showPlayScreen(note) {
       currentNote = note;
@@ -1072,13 +993,8 @@
 
     backBtn.addEventListener("click", showNoteScreen);
 
-    playNoteLabel.addEventListener("click", () => {
-      if (currentNote) playBell(currentNote, 1, null);
-    });
-
-    bellVisual.addEventListener("click", () => {
-      if (currentNote) playBell(currentNote, 1, null);
-    });
+    playNoteLabel.addEventListener("click", () => { if (currentNote) playBell(currentNote, 1, null); });
+    bellVisual.addEventListener("click", () => { if (currentNote) playBell(currentNote, 1, null); });
 
     bellVisual.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
@@ -1106,7 +1022,6 @@
         noteGrid.appendChild(btn);
       });
     }
-
     initNoteButtons();
 
     // Auto-skip permission screen on platforms without explicit API
@@ -1115,7 +1030,6 @@
         typeof DeviceMotionEvent !== "undefined" &&
         typeof DeviceMotionEvent.requestPermission === "function";
 
-      // Preload notes as soon as possible on platforms that allow it
       preloadAllNotes();
 
       if (!needsExplicitPermission) {
@@ -1125,19 +1039,9 @@
       }
     });
 
-    window.addEventListener(
-      "touchstart",
-      () => { resumeAudioCtx(); },
-      { passive: true }
-    );
+    window.addEventListener("touchstart", () => { resumeAudioCtx(); }, { passive: true });
 
-    // Audio reset on visibility changes / navigation events
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) {
-        resetAudioContextOnReturn();
-      }
-    });
-
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) resetAudioContextOnReturn(); });
     window.addEventListener("pageshow", () => { resetAudioContextOnReturn(); });
     window.addEventListener("focus", () => { resetAudioContextOnReturn(); });
   </script>
