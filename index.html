@@ -28,7 +28,6 @@
   <link rel="manifest" href="/favicons/site.webmanifest">
 
   <style>
-    /* Use a JS-driven --vh to avoid iOS/rotation viewport bugs */
     html, body {
       width: 100%;
       height: calc(var(--vh, 1vh) * 100);
@@ -47,11 +46,9 @@
       --font-main: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
         "Segoe UI", sans-serif;
 
-      /* Overlay UI */
       --ui-white: rgba(248, 250, 252, 0.95);
       --ui-white-dim: rgba(248, 250, 252, 0.70);
 
-      /* Slider */
       --slider-stroke: rgba(248, 250, 252, 0.16);
 
       --thumb-silver-1: rgba(248, 250, 252, 0.98);
@@ -73,7 +70,6 @@
       position: relative;
     }
 
-    /* Global logo */
     .global-logo {
       position: fixed;
       top: 1.1rem;
@@ -134,7 +130,6 @@
       box-shadow: 0 5px 12px rgba(0,0,0,0.55);
     }
 
-    /* NOTE SELECTION SCREEN */
     .note-title {
       font-size: 1.15rem;
       font-weight: 600;
@@ -182,7 +177,6 @@
       opacity: 0.82;
     }
 
-    /* PLAY SCREEN */
     .play-screen {
       position: fixed;
       inset: 0;
@@ -193,7 +187,7 @@
       text-align: center;
       color: #020617;
       padding: 1.2rem;
-      padding-bottom: calc(1.2rem + 110px); /* room for centered sustain */
+      padding-bottom: calc(1.2rem + 110px);
     }
 
     .play-screen.active { display: flex; }
@@ -285,7 +279,7 @@
     input[type="range"]::-webkit-slider-runnable-track{
       height: 10px;
       border-radius: 999px;
-      background: #000; /* fully black */
+      background: #000;
       box-shadow:
         inset 0 0 0 1px var(--slider-stroke),
         0 10px 22px rgba(0,0,0,0.18);
@@ -311,7 +305,7 @@
     input[type="range"]::-moz-range-track{
       height: 10px;
       border-radius: 999px;
-      background: #000; /* fully black */
+      background: #000;
       box-shadow:
         inset 0 0 0 1px var(--slider-stroke),
         0 10px 22px rgba(0,0,0,0.18);
@@ -343,7 +337,7 @@
       align-items: center;
       gap: 0.55rem;
       pointer-events: auto;
-      width: 64px; /* keeps it out of center */
+      width: 64px;
     }
     .gain-control.active{ display:flex; }
 
@@ -457,7 +451,6 @@
 <body>
   <img class="global-logo" src="/favicons/favicon_512_transparent.png" alt="PocketChimes bell logo" />
 
-  <!-- MOTION PERMISSION SCREEN -->
   <div class="app" id="motion-screen" role="main">
     <div class="card">
       <div class="title">PocketChimes</div>
@@ -469,7 +462,6 @@
     </div>
   </div>
 
-  <!-- NOTE SELECTION SCREEN -->
   <div class="app" id="note-screen" style="display:none;" role="main">
     <div class="note-card">
       <div class="note-title">Choose your note</div>
@@ -481,7 +473,6 @@
     </div>
   </div>
 
-  <!-- LEFT GAIN CONTROL -->
   <div class="gain-control" id="gain-wrapper" aria-label="Gain control">
     <input
       type="range"
@@ -502,7 +493,6 @@
     </div>
   </div>
 
-  <!-- SUSTAIN CONTROL -->
   <div class="sustain-control" id="sustain-wrapper" aria-label="Sustain control">
     <div class="sustain-header">
       <span class="sustain-title">Sustain</span>
@@ -521,7 +511,6 @@
     <div class="sustain-hint">10 = full · 1 = damped</div>
   </div>
 
-  <!-- PLAY SCREEN -->
   <div class="play-screen" id="play-screen" role="main">
     <button class="back-btn" id="back-btn" type="button">← Notes</button>
 
@@ -673,7 +662,7 @@
       return preloadAllNotesPromise;
     }
 
-    // Headphone warning (OPTION B: exactly ONE declaration)
+    // Headphone warning
     let headphoneWarningShown = false;
     function showHeadphoneWarningOnce() {
       if (headphoneWarningShown) return;
@@ -701,16 +690,15 @@
     // ---- SUSTAIN: exponential fade that does NOT "die early" ----
     function computeSustainRatio(sustainVal) {
       const s = Math.max(1, Math.min(10, sustainVal));
-      return s / 10; // 1->0.1, 3->0.3, 9->0.9, 10->1.0
+      return s / 10;
     }
 
     function scheduleSustainEnvelope(gainNode, now, fullDuration, sustainVal, peakGain) {
       const ratio = computeSustainRatio(sustainVal);
       const targetDuration = Math.max(0.05, fullDuration * ratio);
 
-      // Exponential across whole window, but only down to a floor (so it stays audible).
-      const endFloorRatio = 0.03; // raise to linger more, lower to fade faster
-      const cleanupTail = 0.06;   // tiny tail to avoid click on stop()
+      const endFloorRatio = 0.03;
+      const cleanupTail = 0.06;
 
       const endMainTime = now + targetDuration;
 
@@ -719,25 +707,55 @@
 
       gainNode.gain.setValueAtTime(start, now);
       gainNode.gain.exponentialRampToValueAtTime(endMain, endMainTime);
-
-      // Cleanup to near-zero so stop() is clean
       gainNode.gain.exponentialRampToValueAtTime(0.0001, endMainTime + cleanupTail);
 
       return endMainTime + cleanupTail;
     }
 
-    // ---- FACE-DOWN MUTE: only when truly face-down; gentler (~2x decay time) ----
+    // ---- FACE-DOWN MUTE + AUTO CALIBRATION (fixes axis sign differences) ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
 
-    const FACE_DOWN_MAX_TILT_DEG = 40;  // "generally face down" but not sideways/up
-    const STILL_ACCEL_MAX = 0.90;       // allow some hand jitter
+    // "Generally face down" tolerance
+    const FACE_DOWN_MAX_TILT_DEG = 40;
+    const STILL_ACCEL_MAX = 0.90;   // for mute eligibility
     const GRAVITY_MIN_MAG = 7.0;
+
+    // Calibration (learns whether face-down maps to +Z or -Z on this device)
+    let faceDownZSign = null;       // +1 or -1 once learned
+    let zCalibPos = 0, zCalibNeg = 0;
+    let zCalibLocked = false;
+
+    const CALIB_STILL_ACCEL_MAX = 0.35; // stricter: only calibrate when very still
+    const CALIB_MIN_SAMPLES = 28;
 
     function getAccelMag(a) {
       if (!a) return Infinity;
       const ax = a.x || 0, ay = a.y || 0, az = a.z || 0;
       return Math.sqrt(ax*ax + ay*ay + az*az);
+    }
+
+    function updateFaceDownCalibration(event) {
+      if (zCalibLocked) return;
+
+      const g = event.accelerationIncludingGravity;
+      if (!g || g.x == null || g.y == null || g.z == null) return;
+
+      const gx = g.x || 0, gy = g.y || 0, gz = g.z || 0;
+      const gmag = Math.sqrt(gx*gx + gy*gy + gz*gz);
+      if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
+
+      const still = getAccelMag(event.acceleration) <= CALIB_STILL_ACCEL_MAX;
+      if (!still) return;
+
+      if (gz >= 0) zCalibPos++;
+      else zCalibNeg++;
+
+      const total = zCalibPos + zCalibNeg;
+      if (total >= CALIB_MIN_SAMPLES) {
+        faceDownZSign = (zCalibPos >= zCalibNeg) ? +1 : -1;
+        zCalibLocked = true;
+      }
     }
 
     function checkFaceDownOnly(event) {
@@ -748,24 +766,27 @@
       if (faceDownTriggeredThisRingWindow) return;
       if (inSwing) return;
 
+      // If not calibrated yet, don't allow mute (prevents false positives)
+      if (!faceDownZSign) return;
+
       const g = event.accelerationIncludingGravity;
       if (!g || g.z === null || g.x === null || g.y === null) return;
 
       const gx = g.x || 0;
       const gy = g.y || 0;
-      const gz = g.z || 0;
+      const gzNorm = (g.z || 0) * faceDownZSign; // normalize face-down to positive Z
 
-      // Require gz positive so face-up can never trigger
-      if (gz <= 0) return;
+      // Face-up becomes negative and can never pass the threshold.
+      if (gzNorm <= 0) return;
 
-      const gmag = Math.sqrt(gx*gx + gy*gy + gz*gz);
+      const gmag = Math.sqrt(gx*gx + gy*gy + gzNorm*gzNorm);
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
 
-      const cosToPlusZ = gz / gmag; // 1 means perfectly +Z aligned
+      const cosToDown = gzNorm / gmag;
       const maxTiltRad = (FACE_DOWN_MAX_TILT_DEG * Math.PI) / 180;
       const cosThreshold = Math.cos(maxTiltRad);
 
-      const nearFaceDown = cosToPlusZ >= cosThreshold;
+      const nearFaceDown = cosToDown >= cosThreshold;
       const still = getAccelMag(event.acceleration) <= STILL_ACCEL_MAX;
 
       if (nearFaceDown && still) {
@@ -781,8 +802,7 @@
       activeRings.forEach(r => {
         if (!r || r.ended) return;
 
-        // gentler: ~2x longer than before
-        const aggressiveDecayTime = Math.min(0.40, (r.safeDuration || 0.40));
+        const aggressiveDecayTime = Math.min(0.40, (r.safeDuration || 0.40)); // ~2x gentler
         const holdTime = 0.012;
 
         try {
@@ -841,7 +861,6 @@
       const sustainVal = parseInt(sustainSlider.value, 10);
 
       if (sustainVal >= 10) {
-        // Full sustain: untouched original duration
         const fadeOutTime = 0.02;
         const fadeStart = now + safeDuration - fadeOutTime;
 
@@ -856,7 +875,6 @@
         src.stop(endTime + 0.01);
       }
 
-      // Visual wiggle
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
@@ -903,6 +921,10 @@
     function handleMotion(event) {
       if (!currentNote) return;
 
+      // Auto-learn face-down Z sign for this device
+      updateFaceDownCalibration(event);
+
+      // Face-down mute (now robust to axis differences)
       checkFaceDownOnly(event);
 
       let acc = event.acceleration;
@@ -959,6 +981,13 @@
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
+
+      // reset calibration each play session (optional, but safe)
+      faceDownZSign = null;
+      zCalibPos = 0;
+      zCalibNeg = 0;
+      zCalibLocked = false;
+
       window.addEventListener("devicemotion", handleMotion);
     }
 
@@ -1061,7 +1090,6 @@
     }
     initNoteButtons();
 
-    // Auto-skip permission screen on platforms without explicit API
     window.addEventListener("load", () => {
       const needsExplicitPermission =
         typeof DeviceMotionEvent !== "undefined" &&
