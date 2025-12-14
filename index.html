@@ -51,9 +51,7 @@
       --ui-white: rgba(248, 250, 252, 0.95);
       --ui-white-dim: rgba(248, 250, 252, 0.70);
 
-      /* NEW: slider vibe */
-      --slider-track: rgba(2, 6, 23, 0.78);    /* black-ish */
-      --slider-track-2: rgba(2, 6, 23, 0.62);  /* black-ish */
+      /* Slider */
       --slider-stroke: rgba(248, 250, 252, 0.16);
 
       --thumb-silver-1: rgba(248, 250, 252, 0.98);
@@ -274,7 +272,7 @@
       margin-bottom: 0.8rem;
     }
 
-    /* -------- Sliders (black track + silver thumb) -------- */
+    /* -------- Sliders (fully black track + silver thumb) -------- */
     input[type="range"]{
       -webkit-appearance: none;
       appearance: none;
@@ -287,7 +285,7 @@
     input[type="range"]::-webkit-slider-runnable-track{
       height: 10px;
       border-radius: 999px;
-      background: linear-gradient(to bottom, var(--slider-track), var(--slider-track-2));
+      background: #000; /* fully black */
       box-shadow:
         inset 0 0 0 1px var(--slider-stroke),
         0 10px 22px rgba(0,0,0,0.18);
@@ -313,7 +311,7 @@
     input[type="range"]::-moz-range-track{
       height: 10px;
       border-radius: 999px;
-      background: linear-gradient(to bottom, var(--slider-track), var(--slider-track-2));
+      background: #000; /* fully black */
       box-shadow:
         inset 0 0 0 1px var(--slider-stroke),
         0 10px 22px rgba(0,0,0,0.18);
@@ -333,21 +331,23 @@
         inset 0 0 0 1px rgba(248,250,252,0.25);
     }
 
-    /* Gain: left vertical — labels BESIDE slider */
-    .gain-control {
+    /* Gain: left vertical — text BELOW to avoid overlap */
+    .gain-control{
       position: fixed;
-      left: 0.85rem;
-      top: 60%;
+      left: 0.75rem;
+      top: 58%;
       transform: translateY(-50%);
       z-index: 60;
       display: none;
+      flex-direction: column;
       align-items: center;
       gap: 0.55rem;
       pointer-events: auto;
+      width: 64px; /* keeps it out of center */
     }
-    .gain-control.active { display: flex; }
+    .gain-control.active{ display:flex; }
 
-    .gain-slider {
+    .gain-slider{
       width: 220px;
       height: 44px;
       transform: rotate(-90deg);
@@ -356,41 +356,35 @@
       margin: 0;
     }
 
-    .gain-text {
+    .gain-text{
+      width: 100%;
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      align-items: center;
       gap: 0.15rem;
       color: var(--ui-white);
       text-shadow: 0 2px 8px rgba(2,6,23,0.45);
-      min-width: 92px;
     }
 
-    .gain-row {
+    .gain-row{
       display: flex;
-      align-items: baseline;
       gap: 0.35rem;
-      justify-content: flex-start;
+      align-items: baseline;
+      justify-content: center;
     }
 
-    .gain-title {
-      font-size: 0.88rem;
-      font-weight: 900;
-      letter-spacing: 0.02em;
-      opacity: 0.95;
-    }
-
-    .gain-value {
-      font-size: 0.88rem;
+    .gain-title, .gain-value{
+      font-size: 0.86rem;
       font-weight: 900;
       opacity: 0.95;
     }
 
-    .gain-hint {
-      font-size: 0.72rem;
+    .gain-hint{
+      font-size: 0.70rem;
       color: var(--ui-white-dim);
-      line-height: 1.15;
       opacity: 0.92;
+      text-align: center;
+      line-height: 1.1;
     }
 
     /* Sustain: bottom CENTER always */
@@ -436,7 +430,7 @@
       color: var(--ui-white-dim);
       text-shadow: 0 2px 8px rgba(2,6,23,0.45);
       margin-top: -0.10rem;
-      text-align: center; /* centered label */
+      text-align: center;
       width: 100%;
       opacity: 0.92;
     }
@@ -445,7 +439,7 @@
       .global-logo { top: 0.6rem; width: 78px; }
       .play-note-label { font-size: 2.7rem; margin-bottom: 0.7rem; }
       .hint-text { margin-bottom: 0.4rem; }
-      .play-screen { padding-bottom: calc(1.2rem + 96px); } /* still room, still centered */
+      .play-screen { padding-bottom: calc(1.2rem + 96px); }
       .gain-control { top: 55%; }
     }
 
@@ -487,7 +481,7 @@
     </div>
   </div>
 
-  <!-- LEFT GAIN CONTROL (labels beside slider) -->
+  <!-- LEFT GAIN CONTROL -->
   <div class="gain-control" id="gain-wrapper" aria-label="Gain control">
     <input
       type="range"
@@ -508,7 +502,7 @@
     </div>
   </div>
 
-  <!-- SUSTAIN CONTROL (centered) -->
+  <!-- SUSTAIN CONTROL -->
   <div class="sustain-control" id="sustain-wrapper" aria-label="Sustain control">
     <div class="sustain-header">
       <span class="sustain-title">Sustain</span>
@@ -704,7 +698,7 @@
       sustainValueLabel.textContent = sustainSlider.value;
     });
 
-    // ---- SUSTAIN: exponential fade that DOES NOT "die early" ----
+    // ---- SUSTAIN: exponential fade that does NOT "die early" ----
     function computeSustainRatio(sustainVal) {
       const s = Math.max(1, Math.min(10, sustainVal));
       return s / 10; // 1->0.1, 3->0.3, 9->0.9, 10->1.0
@@ -714,7 +708,7 @@
       const ratio = computeSustainRatio(sustainVal);
       const targetDuration = Math.max(0.05, fullDuration * ratio);
 
-      // Exponential across the whole window, but only down to a floor (so it stays audible).
+      // Exponential across whole window, but only down to a floor (so it stays audible).
       const endFloorRatio = 0.03; // raise to linger more, lower to fade faster
       const cleanupTail = 0.06;   // tiny tail to avoid click on stop()
 
@@ -732,14 +726,13 @@
       return endMainTime + cleanupTail;
     }
 
-    // ---- FACE-DOWN MUTE: ONLY when truly face-down, never face-up ----
+    // ---- FACE-DOWN MUTE: only when truly face-down; gentler (~2x decay time) ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
 
-    // Must be within this tilt of "screen facing down" (+Z alignment used by iOS in your earlier strict version).
-    const FACE_DOWN_MAX_TILT_DEG = 40;  // allow "generally face down" but not sideways/up
+    const FACE_DOWN_MAX_TILT_DEG = 40;  // "generally face down" but not sideways/up
     const STILL_ACCEL_MAX = 0.90;       // allow some hand jitter
-    const GRAVITY_MIN_MAG = 7.0;        // sanity check
+    const GRAVITY_MIN_MAG = 7.0;
 
     function getAccelMag(a) {
       if (!a) return Infinity;
@@ -762,7 +755,7 @@
       const gy = g.y || 0;
       const gz = g.z || 0;
 
-      // IMPORTANT: require gz to be positive (prevents face-up triggering)
+      // Require gz positive so face-up can never trigger
       if (gz <= 0) return;
 
       const gmag = Math.sqrt(gx*gx + gy*gy + gz*gz);
@@ -788,7 +781,8 @@
       activeRings.forEach(r => {
         if (!r || r.ended) return;
 
-        const aggressiveDecayTime = Math.min(0.20, r.safeDuration || 0.20);
+        // gentler: ~2x longer than before
+        const aggressiveDecayTime = Math.min(0.40, (r.safeDuration || 0.40));
         const holdTime = 0.012;
 
         try {
@@ -857,9 +851,7 @@
         src.start(now);
         src.stop(now + safeDuration);
       } else {
-        // Exponential decay that doesn't vanish early
         const endTime = scheduleSustainEnvelope(gain, now, safeDuration, sustainVal, volumeMaxGain);
-
         src.start(now);
         src.stop(endTime + 0.01);
       }
@@ -911,7 +903,6 @@
     function handleMotion(event) {
       if (!currentNote) return;
 
-      // Fixed: face-down mute cannot trigger face-up
       checkFaceDownOnly(event);
 
       let acc = event.acceleration;
