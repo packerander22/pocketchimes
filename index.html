@@ -762,22 +762,23 @@
         if (calibSamples.length >= 1) lockCalibrationFromSamples();
         return;
       }
-
+    
       const g = event.accelerationIncludingGravity;
       if (!g || g.x == null || g.y == null || g.z == null) return;
-
+    
       const gx = g.x || 0, gy = g.y || 0, gz = g.z || 0;
       const gmag = Math.sqrt(gx*gx + gy*gy + gz*gz);
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
-
-      const still = getAccelMag(event.acceleration) <= CALIB_STILL_ACCEL_MAX;
+    
+      // ✅ FIX: some devices report event.acceleration as null — treat that as "still ok"
+      const still = (!event.acceleration) || (getAccelMag(event.acceleration) <= CALIB_STILL_ACCEL_MAX);
       if (!still) return;
-
+    
       const cosToZ = Math.abs(gz) / gmag;
       if (cosToZ < CALIB_NEAR_FLAT_COS) return;
-
+    
       calibSamples.push(gz);
-
+    
       if (calibSamples.length >= CALIB_MIN_SAMPLES) {
         lockCalibrationFromSamples();
       }
@@ -801,28 +802,30 @@
       }
       if (faceDownTriggeredThisRingWindow) return;
       if (inSwing) return;
-
+    
       if (!faceDownZSign) return;
-
+    
       const g = event.accelerationIncludingGravity;
       if (!g || g.z == null || g.x == null || g.y == null) return;
-
+    
       const gx = g.x || 0;
       const gy = g.y || 0;
       const gzNorm = (g.z || 0) * faceDownZSign;
-
+    
       if (gzNorm <= 0) return;
-
+    
       const gmag = Math.sqrt(gx*gx + gy*gy + gzNorm*gzNorm);
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
-
+    
       const cosToDown = gzNorm / gmag;
       const maxTiltRad = (FACE_DOWN_MAX_TILT_DEG * Math.PI) / 180;
       const cosThreshold = Math.cos(maxTiltRad);
-
+    
       const nearFaceDown = cosToDown >= cosThreshold;
-      const still = getAccelMag(event.acceleration) <= STILL_ACCEL_MAX;
-
+    
+      // ✅ FIX: some devices report event.acceleration as null — treat that as "still ok"
+      const still = (!event.acceleration) || (getAccelMag(event.acceleration) <= STILL_ACCEL_MAX);
+    
       if (nearFaceDown && still) {
         faceDownTriggeredThisRingWindow = true;
         applyAggressiveDampToActiveRings();
