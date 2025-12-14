@@ -837,7 +837,7 @@
         if (!r || r.ended) return;
 
         const aggressiveDecayTime = Math.min(0.25, (r.safeDuration || 0.25));
-        const holdTime = 0.008;
+        const holdTime = 0.002;
 
         try {
           if (typeof r.gain.gain.cancelAndHoldAtTime === "function") {
