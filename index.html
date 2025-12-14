@@ -678,20 +678,41 @@
       sustainValueLabel.textContent = sustainSlider.value;
     });
 
-    // ---- SUSTAIN: linear steps for length, exponential fade curve ----
-    function computeDecayTimeSeconds(sustainVal, fullDuration) {
+    // ---- SUSTAIN: linear "percent of full length" + exponential tail near the end ----
+    function computeSustainRatio(sustainVal) {
       const s = Math.max(1, Math.min(10, sustainVal));
-      const ratio = 0.1 + (s - 1) * (0.9 / 9); // 1–10 -> 0.1–1.0
-      return fullDuration * ratio;
+      return s / 10; // 1->0.1, 3->0.3, 9->0.9, 10->1.0
     }
 
-    // ---- FACE-DOWN MUTE: instant, strict, only while ringing, cannot trigger during motion ----
+    function scheduleSustainEnvelope(gainNode, now, fullDuration, sustainVal, peakGain) {
+      const ratio = computeSustainRatio(sustainVal);
+      const targetDuration = Math.max(0.05, fullDuration * ratio);
+
+      // Tail length: short exponential fade near the end (prevents "aggressive" early drop).
+      // Scales with duration but clamps to keep it feeling consistent.
+      const minTail = 0.06;
+      const maxTail = 0.45;
+      const tail = Math.max(minTail, Math.min(maxTail, targetDuration * 0.28));
+      const hold = Math.max(0.0, targetDuration - tail);
+
+      // Hold near full volume, then exponential fade at the end.
+      gainNode.gain.setValueAtTime(peakGain, now);
+      gainNode.gain.setValueAtTime(peakGain, now + hold);
+
+      // Exponential ramps can't go to 0, so use a tiny floor.
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + hold + tail);
+
+      return now + targetDuration;
+    }
+
+    // ---- FACE-DOWN MUTE: instant, MUCH LESS STRICT, only while ringing, cannot trigger during motion ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
 
-    const FACE_DOWN_Z_STRICT = 9.65;
-    const FACE_DOWN_XY_MAX   = 0.9;
-    const STILL_ACCEL_MAX    = 0.12;
+    // Looser thresholds
+    const FACE_TILT_MAX_DEG = 55;   // "generally face down" (tilt allowance)
+    const STILL_ACCEL_MAX   = 0.70; // allow small movements / hand jitter
+    const GRAVITY_MIN_MAG   = 7.0;  // sanity check for gravity vector presence
 
     function getAccelMag(a) {
       if (!a) return Infinity;
@@ -699,7 +720,7 @@
       return Math.sqrt(ax*ax + ay*ay + az*az);
     }
 
-    function checkFaceDownStrictInstant(event) {
+    function checkFaceDownLooseInstant(event) {
       if (activeRings.size === 0) {
         faceDownTriggeredThisRingWindow = false;
         return;
@@ -714,14 +735,20 @@
       const gy = g.y || 0;
       const gz = g.z || 0;
 
-      const nearFlatDown =
-        (gz >= FACE_DOWN_Z_STRICT) &&
-        (Math.abs(gx) <= FACE_DOWN_XY_MAX) &&
-        (Math.abs(gy) <= FACE_DOWN_XY_MAX);
+      const gmag = Math.sqrt(gx*gx + gy*gy + gz*gz);
+      if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
 
+      // Angle to +Z and -Z (covers device axis differences across platforms)
+      const cosToPlusZ  = gz / gmag;
+      const cosToMinusZ = (-gz) / gmag;
+
+      const anglePlus  = Math.acos(Math.max(-1, Math.min(1, cosToPlusZ)))  * (180 / Math.PI);
+      const angleMinus = Math.acos(Math.max(-1, Math.min(1, cosToMinusZ))) * (180 / Math.PI);
+
+      const nearFaceDownish = (anglePlus <= FACE_TILT_MAX_DEG) || (angleMinus <= FACE_TILT_MAX_DEG);
       const still = getAccelMag(event.acceleration) <= STILL_ACCEL_MAX;
 
-      if (nearFlatDown && still) {
+      if (nearFaceDownish && still) {
         faceDownTriggeredThisRingWindow = true;
         applyAggressiveDampToActiveRings();
       }
@@ -734,8 +761,8 @@
       activeRings.forEach(r => {
         if (!r || r.ended) return;
 
-        const aggressiveDecayTime = Math.min(0.18, r.safeDuration || 0.18);
-        const holdTime = 0.015;
+        const aggressiveDecayTime = Math.min(0.20, r.safeDuration || 0.20);
+        const holdTime = 0.012;
 
         try {
           if (typeof r.gain.gain.cancelAndHoldAtTime === "function") {
@@ -793,7 +820,7 @@
       const sustainVal = parseInt(sustainSlider.value, 10);
 
       if (sustainVal >= 10) {
-        // Full sustain: untouched original duration
+        // Full sustain: untouched original duration (tiny linear cleanup at the very end)
         const fadeOutTime = 0.02;
         const fadeStart = now + safeDuration - fadeOutTime;
 
@@ -803,14 +830,8 @@
         src.start(now);
         src.stop(now + safeDuration);
       } else {
-        // Linear length scaling, exponential fade curve
-        const decayTime = computeDecayTimeSeconds(sustainVal, safeDuration);
-        const endTime = now + decayTime;
-        const holdTime = 0.015;
-
-        gain.gain.setValueAtTime(volumeMaxGain, now);
-        gain.gain.setValueAtTime(volumeMaxGain, now + holdTime);
-        gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+        // Linear "percent of full length" with exponential tail only near the end
+        const endTime = scheduleSustainEnvelope(gain, now, safeDuration, sustainVal, volumeMaxGain);
 
         src.start(now);
         src.stop(endTime + 0.01);
@@ -863,7 +884,8 @@
     function handleMotion(event) {
       if (!currentNote) return;
 
-      checkFaceDownStrictInstant(event);
+      // updated: looser "generally face down"
+      checkFaceDownLooseInstant(event);
 
       let acc = event.acceleration;
       if (!acc || (acc.x === null && acc.y === null && acc.z === null)) {
