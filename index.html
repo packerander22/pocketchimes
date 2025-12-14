@@ -534,7 +534,6 @@
   </div>
 
   <script>
-    // --- Fix viewport height on rotation (prevents layout break) ---
     function setVhUnit() {
       document.documentElement.style.setProperty("--vh", `${window.innerHeight * 0.01}px`);
     }
@@ -712,22 +711,24 @@
       return endMainTime + cleanupTail;
     }
 
-    // ---- FACE-DOWN MUTE + AUTO CALIBRATION (fixes axis sign differences) ----
+    // ---- FACE-DOWN MUTE + FACE-UP CALIBRATION (robust across devices) ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
 
-    // "Generally face down" tolerance
-    const FACE_DOWN_MAX_TILT_DEG = 40;
-    const STILL_ACCEL_MAX = 0.90;   // for mute eligibility
+    const FACE_DOWN_MAX_TILT_DEG = 45;
+    const STILL_ACCEL_MAX = 0.90;
     const GRAVITY_MIN_MAG = 7.0;
 
-    // Calibration (learns whether face-down maps to +Z or -Z on this device)
-    let faceDownZSign = null;       // +1 or -1 once learned
-    let zCalibPos = 0, zCalibNeg = 0;
-    let zCalibLocked = false;
+    // Calibration: learn FACE-UP sign at play start, then invert it for face-down
+    let faceDownZSign = null;
+    let calibSamples = [];
+    let calibUntilMs = 0;
+    let calibLocked = false;
 
-    const CALIB_STILL_ACCEL_MAX = 0.35; // stricter: only calibrate when very still
-    const CALIB_MIN_SAMPLES = 28;
+    const CALIB_WINDOW_MS = 1200;
+    const CALIB_STILL_ACCEL_MAX = 0.45;
+    const CALIB_MIN_SAMPLES = 16;
+    const CALIB_NEAR_FLAT_COS = Math.cos((55 * Math.PI) / 180);
 
     function getAccelMag(a) {
       if (!a) return Infinity;
@@ -735,8 +736,19 @@
       return Math.sqrt(ax*ax + ay*ay + az*az);
     }
 
-    function updateFaceDownCalibration(event) {
-      if (zCalibLocked) return;
+    function beginFaceUpCalibration() {
+      faceDownZSign = null;
+      calibSamples = [];
+      calibLocked = false;
+      calibUntilMs = performance.now() + CALIB_WINDOW_MS;
+    }
+
+    function updateFaceUpCalibration(event) {
+      if (calibLocked) return;
+      if (performance.now() > calibUntilMs) {
+        if (calibSamples.length >= 1) lockCalibrationFromSamples();
+        return;
+      }
 
       const g = event.accelerationIncludingGravity;
       if (!g || g.x == null || g.y == null || g.z == null) return;
@@ -748,14 +760,25 @@
       const still = getAccelMag(event.acceleration) <= CALIB_STILL_ACCEL_MAX;
       if (!still) return;
 
-      if (gz >= 0) zCalibPos++;
-      else zCalibNeg++;
+      const cosToZ = Math.abs(gz) / gmag;
+      if (cosToZ < CALIB_NEAR_FLAT_COS) return;
 
-      const total = zCalibPos + zCalibNeg;
-      if (total >= CALIB_MIN_SAMPLES) {
-        faceDownZSign = (zCalibPos >= zCalibNeg) ? +1 : -1;
-        zCalibLocked = true;
+      calibSamples.push(gz);
+
+      if (calibSamples.length >= CALIB_MIN_SAMPLES) {
+        lockCalibrationFromSamples();
       }
+    }
+
+    function lockCalibrationFromSamples() {
+      const arr = calibSamples.slice().sort((a,b) => a-b);
+      const mid = Math.floor(arr.length / 2);
+      const medianGz = (arr.length % 2) ? arr[mid] : (arr[mid-1] + arr[mid]) / 2;
+
+      const faceUpSign = (medianGz >= 0) ? +1 : -1;
+      faceDownZSign = -faceUpSign;
+
+      calibLocked = true;
     }
 
     function checkFaceDownOnly(event) {
@@ -766,17 +789,15 @@
       if (faceDownTriggeredThisRingWindow) return;
       if (inSwing) return;
 
-      // If not calibrated yet, don't allow mute (prevents false positives)
       if (!faceDownZSign) return;
 
       const g = event.accelerationIncludingGravity;
-      if (!g || g.z === null || g.x === null || g.y === null) return;
+      if (!g || g.z == null || g.x == null || g.y == null) return;
 
       const gx = g.x || 0;
       const gy = g.y || 0;
-      const gzNorm = (g.z || 0) * faceDownZSign; // normalize face-down to positive Z
+      const gzNorm = (g.z || 0) * faceDownZSign;
 
-      // Face-up becomes negative and can never pass the threshold.
       if (gzNorm <= 0) return;
 
       const gmag = Math.sqrt(gx*gx + gy*gy + gzNorm*gzNorm);
@@ -795,14 +816,14 @@
       }
     }
 
-//  function applyAggressiveDampToActiveRings() {
+    function applyAggressiveDampToActiveRings() {
       if (!audioCtx) return;
       const now = audioCtx.currentTime;
 
       activeRings.forEach(r => {
         if (!r || r.ended) return;
 
-        const aggressiveDecayTime = Math.min(0.40, (r.safeDuration || 0.40)); // ~2x gentler
+        const aggressiveDecayTime = Math.min(0.40, (r.safeDuration || 0.40));
         const holdTime = 0.012;
 
         try {
@@ -921,10 +942,7 @@
     function handleMotion(event) {
       if (!currentNote) return;
 
-      // Auto-learn face-down Z sign for this device
-      updateFaceDownCalibration(event);
-
-      // Face-down mute (now robust to axis differences)
+      updateFaceUpCalibration(event);
       checkFaceDownOnly(event);
 
       let acc = event.acceleration;
@@ -982,11 +1000,7 @@
       lastAx = lastAy = lastAz = null;
       inSwing = false;
 
-      // reset calibration each play session (optional, but safe)
-      faceDownZSign = null;
-      zCalibPos = 0;
-      zCalibNeg = 0;
-      zCalibLocked = false;
+      beginFaceUpCalibration();
 
       window.addEventListener("devicemotion", handleMotion);
     }
@@ -1069,7 +1083,6 @@
       }
     });
 
-    // ---- INIT NOTE BUTTONS ----
     function initNoteButtons() {
       NOTES.forEach((n) => {
         const btn = document.createElement("button");
