@@ -832,13 +832,12 @@
     function applyAggressiveDampToActiveRings() {
       if (!audioCtx) return;
       const now = audioCtx.currentTime;
-
+    
       activeRings.forEach(r => {
         if (!r || r.ended) return;
-
+    
         const aggressiveDecayTime = Math.min(0.25, (r.safeDuration || 0.25));
-        const holdTime = 0.002;
-
+    
         try {
           if (typeof r.gain.gain.cancelAndHoldAtTime === "function") {
             r.gain.gain.cancelAndHoldAtTime(now);
@@ -846,17 +845,17 @@
             r.gain.gain.cancelScheduledValues(now);
             r.gain.gain.setValueAtTime(r.gain.gain.value, now);
           }
-
+    
           const current = Math.max(r.gain.gain.value, 0.0002);
+    
+          // Immediate exponential decay — no hold
           r.gain.gain.setValueAtTime(current, now);
-          r.gain.gain.setValueAtTime(current, now + holdTime);
           r.gain.gain.exponentialRampToValueAtTime(0.0001, now + aggressiveDecayTime);
-
+    
           r.src.stop(now + aggressiveDecayTime + 0.01);
         } catch (e) {}
       });
     }
-
     // ---- Play bell sample ----
     async function playBell(note, intensity = 1, visualDir = null) {
       if (!note) return;
