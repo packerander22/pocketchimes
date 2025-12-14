@@ -693,32 +693,36 @@
     }
 
     function scheduleSustainEnvelope(gainNode, now, fullDuration, sustainVal, peakGain) {
-      const ratio = computeSustainRatio(sustainVal);           // 1..10 -> 0.1..1.0
-      const targetDuration = Math.max(0.08, fullDuration * ratio);
+      const ratio = computeSustainRatio(sustainVal);           // sustain/10
+      const targetDuration = Math.max(0.10, fullDuration * ratio);
     
-      // Start gain and "floor" (never go to 0 with exponential-style curves)
       const start = Math.max(peakGain, 0.0003);
-      const floor = 0.00014;
     
-      // Reverse-exponential shape:
-      // Higher K = hangs louder longer, then drops harder at the end
+      // End extremely close to zero so src.stop() is inaudible.
+      // Lower = less cutoff, but don't go to 0 exactly.
+      const floor = 0.00001;
+    
+      // Reverse-exponential "hang then fall"
       const K = 1.0;
     
-      // More samples = smoother curve (keep reasonable for mobile)
-      const N = 120;
+      // Smoothness
+      const N = 220;
       const curve = new Float32Array(N);
     
       for (let i = 0; i < N; i++) {
         const t = i / (N - 1); // 0..1
-    
-        // normalized exp growth 0..1 (slow early, fast late)
-        const expNorm = (Math.exp(K * t) - 1) / (Math.exp(K) - 1);
-    
-        // invert it so gain decreases slow early, fast late (reverse exponential feel)
-        const y = 1 - expNorm;
-    
+        const expNorm = (Math.exp(K * t) - 1) / (Math.exp(K) - 1); // 0..1
+        const y = 1 - expNorm; // 1..0
         curve[i] = floor + (start - floor) * y;
       }
+    
+      try { gainNode.gain.cancelScheduledValues(now); } catch(e) {}
+      gainNode.gain.setValueAtTime(start, now);
+      gainNode.gain.setValueCurveAtTime(curve, now, targetDuration);
+    
+      // Return the exact time the curve ends. Stop the source AFTER this.
+      return now + targetDuration;
+    }
     
       // Make sure we don't have any previous schedules fighting this one
       try { gainNode.gain.cancelScheduledValues(now); } catch(e) {}
