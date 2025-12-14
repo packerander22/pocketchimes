@@ -724,19 +724,6 @@
       return now + targetDuration;
     }
     
-      // Make sure we don't have any previous schedules fighting this one
-      try { gainNode.gain.cancelScheduledValues(now); } catch(e) {}
-    
-      gainNode.gain.setValueAtTime(start, now);
-      gainNode.gain.setValueCurveAtTime(curve, now, targetDuration);
-    
-      // tiny tail to avoid "hard stop" when the source stops
-      const tail = 0.10;
-      gainNode.gain.setValueAtTime(curve[N - 1], now + targetDuration);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + targetDuration + tail);
-    
-      return now + targetDuration + tail;
-    }
     // ---- FACE-DOWN MUTE + FACE-UP CALIBRATION (robust across devices) ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
