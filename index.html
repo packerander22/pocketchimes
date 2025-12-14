@@ -693,24 +693,46 @@
     }
 
     function scheduleSustainEnvelope(gainNode, now, fullDuration, sustainVal, peakGain) {
-      const ratio = computeSustainRatio(sustainVal);
-      const targetDuration = Math.max(0.05, fullDuration * ratio);
-
-      const endFloorRatio = 0.03;
-      const cleanupTail = 0.06;
-
-      const endMainTime = now + targetDuration;
-
-      const start = Math.max(peakGain, 0.0002);
-      const endMain = Math.max(start * endFloorRatio, 0.0002);
-
+      const ratio = computeSustainRatio(sustainVal);           // 1..10 -> 0.1..1.0
+      const targetDuration = Math.max(0.08, fullDuration * ratio);
+    
+      // Start gain and "floor" (never go to 0 with exponential-style curves)
+      const start = Math.max(peakGain, 0.0003);
+      const floor = 0.00014;
+    
+      // Reverse-exponential shape:
+      // Higher K = hangs louder longer, then drops harder at the end
+      const K = 4.2;
+    
+      // More samples = smoother curve (keep reasonable for mobile)
+      const N = 120;
+      const curve = new Float32Array(N);
+    
+      for (let i = 0; i < N; i++) {
+        const t = i / (N - 1); // 0..1
+    
+        // normalized exp growth 0..1 (slow early, fast late)
+        const expNorm = (Math.exp(K * t) - 1) / (Math.exp(K) - 1);
+    
+        // invert it so gain decreases slow early, fast late (reverse exponential feel)
+        const y = 1 - expNorm;
+    
+        curve[i] = floor + (start - floor) * y;
+      }
+    
+      // Make sure we don't have any previous schedules fighting this one
+      try { gainNode.gain.cancelScheduledValues(now); } catch(e) {}
+    
       gainNode.gain.setValueAtTime(start, now);
-      gainNode.gain.exponentialRampToValueAtTime(endMain, endMainTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, endMainTime + cleanupTail);
-
-      return endMainTime + cleanupTail;
+      gainNode.gain.setValueCurveAtTime(curve, now, targetDuration);
+    
+      // tiny tail to avoid "hard stop" when the source stops
+      const tail = 0.10;
+      gainNode.gain.setValueAtTime(curve[N - 1], now + targetDuration);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + targetDuration + tail);
+    
+      return now + targetDuration + tail;
     }
-
     // ---- FACE-DOWN MUTE + FACE-UP CALIBRATION (robust across devices) ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
@@ -823,8 +845,8 @@
       activeRings.forEach(r => {
         if (!r || r.ended) return;
 
-        const aggressiveDecayTime = Math.min(0.40, (r.safeDuration || 0.40));
-        const holdTime = 0.012;
+        const aggressiveDecayTime = Math.min(0.25, (r.safeDuration || 0.25));
+        const holdTime = 0.008;
 
         try {
           if (typeof r.gain.gain.cancelAndHoldAtTime === "function") {
