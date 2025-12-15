@@ -807,17 +807,29 @@
       // Do not allow during swing gesture
       if (inSwing) return;
     
-      // Calibration must be complete
-      if (!faceDownZSign) return;
-    
       const g = event.accelerationIncludingGravity;
       if (!g || g.x == null || g.y == null || g.z == null) return;
     
       const gx = g.x || 0;
       const gy = g.y || 0;
+      const gz = g.z || 0;
+    
+      // --- Fallback calibration: if faceDownZSign never got set, lock it when near-flat ---
+      if (!faceDownZSign) {
+        const gmag0 = Math.sqrt(gx * gx + gy * gy + gz * gz);
+        if (!isFinite(gmag0) || gmag0 < GRAVITY_MIN_MAG) return;
+    
+        // only lock sign when close to flat (reduces wrong-sign risk)
+        const cosToZ = Math.abs(gz) / gmag0;
+        if (cosToZ < 0.80) return;
+    
+        // face-up sign is sign(gz); face-down sign is inverted
+        faceDownZSign = (gz >= 0) ? -1 : +1;
+        calibLocked = true;
+      }
     
       // Normalize Z so positive ALWAYS means face-down
-      const gzNorm = (g.z || 0) * faceDownZSign;
+      const gzNorm = gz * faceDownZSign;
     
       // Hard reject face-up
       if (gzNorm <= 0) return;
@@ -826,7 +838,8 @@
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
     
       // Gravity must be mostly along Z (prevents diagonal false triggers)
-      if (Math.abs(gzNorm) < 0.65 * gmag) return;
+      // (Loosen slightly if it blocks too much)
+      if (Math.abs(gzNorm) < 0.55 * gmag) return;
     
       // Tilt cone check
       const cosToDown = gzNorm / gmag;
