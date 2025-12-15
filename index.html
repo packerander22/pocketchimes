@@ -800,33 +800,40 @@
         faceDownTriggeredThisRingWindow = false;
         return;
       }
+    
+      // Only once per ring
       if (faceDownTriggeredThisRingWindow) return;
+    
+      // Do not allow during swing gesture
       if (inSwing) return;
     
+      // Calibration must be complete
       if (!faceDownZSign) return;
     
       const g = event.accelerationIncludingGravity;
-      if (!g || g.z == null || g.x == null || g.y == null) return;
+      if (!g || g.x == null || g.y == null || g.z == null) return;
     
       const gx = g.x || 0;
       const gy = g.y || 0;
+    
+      // Normalize Z so positive ALWAYS means face-down
       const gzNorm = (g.z || 0) * faceDownZSign;
     
+      // Hard reject face-up
       if (gzNorm <= 0) return;
     
-      const gmag = Math.sqrt(gx*gx + gy*gy + gzNorm*gzNorm);
+      const gmag = Math.sqrt(gx * gx + gy * gy + gzNorm * gzNorm);
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
     
+      // Gravity must be mostly along Z (prevents diagonal false triggers)
+      if (Math.abs(gzNorm) < 0.65 * gmag) return;
+    
+      // Tilt cone check
       const cosToDown = gzNorm / gmag;
       const maxTiltRad = (FACE_DOWN_MAX_TILT_DEG * Math.PI) / 180;
       const cosThreshold = Math.cos(maxTiltRad);
     
-      const nearFaceDown = cosToDown >= cosThreshold;
-    
-      // ✅ FIX: some devices report event.acceleration as null — treat that as "still ok"
-      const still = (!event.acceleration) || (getAccelMag(event.acceleration) <= STILL_ACCEL_MAX);
-    
-      if (nearFaceDown && still) {
+      if (cosToDown >= cosThreshold) {
         faceDownTriggeredThisRingWindow = true;
         applyAggressiveDampToActiveRings();
       }
