@@ -737,11 +737,13 @@
     let calibSamples = [];
     let calibUntilMs = 0;
     let calibLocked = false;
+    let lastCalibG = null;
 
     const CALIB_WINDOW_MS = 1200;
     const CALIB_STILL_ACCEL_MAX = 0.45;
     const CALIB_MIN_SAMPLES = 16;
     const CALIB_NEAR_FLAT_COS = Math.cos((55 * Math.PI) / 180);
+    const CALIB_GRAV_DELTA_MAX = 0.30;
 
     function getAccelMag(a) {
       if (!a) return Infinity;
@@ -754,10 +756,12 @@
       calibSamples = [];
       calibLocked = false;
       calibUntilMs = performance.now() + CALIB_WINDOW_MS;
+      lastCalibG = null; // reset gravity-delta stillness fallback
     }
 
     function updateFaceUpCalibration(event) {
       if (calibLocked) return;
+    
       if (performance.now() > calibUntilMs) {
         if (calibSamples.length >= 1) lockCalibrationFromSamples();
         return;
@@ -770,8 +774,24 @@
       const gmag = Math.sqrt(gx*gx + gy*gy + gz*gz);
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
     
-      // ✅ FIX: some devices report event.acceleration as null — treat that as "still ok"
-      const still = (!event.acceleration) || (getAccelMag(event.acceleration) <= CALIB_STILL_ACCEL_MAX);
+      // Stillness REQUIRED during calibration:
+      // - Prefer event.acceleration when available
+      // - Fallback to "gravity vector not changing much" when acceleration is null
+      let still = false;
+    
+      if (event.acceleration) {
+        still = getAccelMag(event.acceleration) <= CALIB_STILL_ACCEL_MAX;
+      } else {
+        if (lastCalibG) {
+          const dx = gx - lastCalibG.x;
+          const dy = gy - lastCalibG.y;
+          const dz = gz - lastCalibG.z;
+          const dmag = Math.sqrt(dx*dx + dy*dy + dz*dz);
+          still = dmag <= CALIB_GRAV_DELTA_MAX;
+        }
+        lastCalibG = { x: gx, y: gy, z: gz };
+      }
+    
       if (!still) return;
     
       const cosToZ = Math.abs(gz) / gmag;
@@ -796,6 +816,7 @@
     }
 
     function checkFaceDownOnly(event) {
+      // Must be actively ringing
       if (activeRings.size === 0) {
         faceDownTriggeredThisRingWindow = false;
         return;
@@ -807,26 +828,15 @@
       // Do not allow during swing gesture
       if (inSwing) return;
     
+      // Calibration must be complete (NO fallback here)
+      if (!faceDownZSign) return;
+    
       const g = event.accelerationIncludingGravity;
       if (!g || g.x == null || g.y == null || g.z == null) return;
     
       const gx = g.x || 0;
       const gy = g.y || 0;
       const gz = g.z || 0;
-    
-      // --- Fallback calibration: if faceDownZSign never got set, lock it when near-flat ---
-      if (!faceDownZSign) {
-        const gmag0 = Math.sqrt(gx * gx + gy * gy + gz * gz);
-        if (!isFinite(gmag0) || gmag0 < GRAVITY_MIN_MAG) return;
-    
-        // only lock sign when close to flat (reduces wrong-sign risk)
-        const cosToZ = Math.abs(gz) / gmag0;
-        if (cosToZ < 0.80) return;
-    
-        // face-up sign is sign(gz); face-down sign is inverted
-        faceDownZSign = (gz >= 0) ? -1 : +1;
-        calibLocked = true;
-      }
     
       // Normalize Z so positive ALWAYS means face-down
       const gzNorm = gz * faceDownZSign;
@@ -838,7 +848,6 @@
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
     
       // Gravity must be mostly along Z (prevents diagonal false triggers)
-      // (Loosen slightly if it blocks too much)
       if (Math.abs(gzNorm) < 0.55 * gmag) return;
     
       // Tilt cone check
