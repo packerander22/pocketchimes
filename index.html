@@ -718,9 +718,11 @@
     function dampingTimeConstantFromSlider(val) {
       const v = Math.max(1, Math.min(10, val));
       const t = (v - 1) / 9; // 0..1
-      const tcMin = 0.06;    // heavy damping
-      const tcMax = 2.20;    // very light damping
-      // exponential mapping feels more natural than linear
+    
+      // Slower decay = longer, gentler ring
+      const tcMin = 0.10;   // strongest damping (still smooth)
+      const tcMax = 3.6;    // very light damping (long ring)
+    
       return tcMin * Math.pow(tcMax / tcMin, t);
     }
 
