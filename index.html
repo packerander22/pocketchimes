@@ -619,7 +619,9 @@
     // ---- AUDIO ----
     let audioCtx = null;
     let volumeMaxGain = 1.0;
+
     const noteBuffers = new Map();
+    const noteBufferPromises = new Map(); // ✅ in-flight dedupe (prevents double fetch/decode)
     let preloadAllNotesPromise = null;
 
     function ensureAudioCtx() {
@@ -643,21 +645,37 @@
 
     async function loadNoteBuffer(note) {
       if (noteBuffers.has(note.id)) return noteBuffers.get(note.id);
+      if (noteBufferPromises.has(note.id)) return noteBufferPromises.get(note.id);
+
       ensureAudioCtx();
       if (!audioCtx) return null;
 
-      const resp = await fetch(note.file);
-      const arr  = await resp.arrayBuffer();
-      const buf  = await audioCtx.decodeAudioData(arr);
-      noteBuffers.set(note.id, buf);
-      return buf;
+      const p = (async () => {
+        const resp = await fetch(note.file, { cache: "force-cache" });
+        if (!resp.ok) throw new Error(`Failed to fetch ${note.file}: ${resp.status}`);
+        const arr = await resp.arrayBuffer();
+        const buf = await audioCtx.decodeAudioData(arr);
+        noteBuffers.set(note.id, buf);
+        return buf;
+      })().catch((e) => {
+        console.warn("loadNoteBuffer error:", e);
+        return null;
+      }).finally(() => {
+        noteBufferPromises.delete(note.id);
+      });
+
+      noteBufferPromises.set(note.id, p);
+      return p;
     }
 
     function preloadAllNotes() {
+      // ✅ Only start once (and only after a user gesture calls this)
       if (preloadAllNotesPromise) return preloadAllNotesPromise;
+
       preloadAllNotesPromise = Promise.all(
-        NOTES.map(n => loadNoteBuffer(n).catch(() => null))
+        NOTES.map(n => loadNoteBuffer(n))
       ).then(() => console.log("All notes preloaded"));
+
       return preloadAllNotesPromise;
     }
 
@@ -693,38 +711,31 @@
     }
 
     function scheduleSustainEnvelope(gainNode, now, fullDuration, sustainVal, peakGain) {
-      const ratio = computeSustainRatio(sustainVal);           // sustain/10
+      const ratio = computeSustainRatio(sustainVal);
       const targetDuration = Math.max(0.10, fullDuration * ratio);
-    
+
       const start = Math.max(peakGain, 0.0003);
-    
-      // End extremely close to zero so src.stop() is inaudible.
-      // Lower = less cutoff, but don't go to 0 exactly.
       const floor = 0.00001;
-    
-      // Reverse-exponential "hang then fall"
+
       const K = 1.0;
-    
-      // Smoothness
       const N = 220;
       const curve = new Float32Array(N);
-    
+
       for (let i = 0; i < N; i++) {
-        const t = i / (N - 1); // 0..1
-        const expNorm = (Math.exp(K * t) - 1) / (Math.exp(K) - 1); // 0..1
-        const y = 1 - expNorm; // 1..0
+        const t = i / (N - 1);
+        const expNorm = (Math.exp(K * t) - 1) / (Math.exp(K) - 1);
+        const y = 1 - expNorm;
         curve[i] = floor + (start - floor) * y;
       }
-    
+
       try { gainNode.gain.cancelScheduledValues(now); } catch(e) {}
       gainNode.gain.setValueAtTime(start, now);
       gainNode.gain.setValueCurveAtTime(curve, now, targetDuration);
-    
-      // Return the exact time the curve ends. Stop the source AFTER this.
+
       return now + targetDuration;
     }
-    
-    // ---- FACE-DOWN MUTE + FACE-UP CALIBRATION (robust across devices) ----
+
+    // ---- FACE-DOWN MUTE + FACE-UP CALIBRATION (your existing code, unchanged) ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
 
@@ -732,7 +743,6 @@
     const STILL_ACCEL_MAX = 0.90;
     const GRAVITY_MIN_MAG = 7.0;
 
-    // Calibration: learn FACE-UP sign at play start, then invert it for face-down
     let faceDownZSign = null;
     let calibSamples = [];
     let calibUntilMs = 0;
@@ -761,60 +771,48 @@
 
     function updateFaceUpCalibration(event) {
       if (calibLocked) return;
-    
+
       const g = event.accelerationIncludingGravity;
       if (!g || g.x == null || g.y == null || g.z == null) return;
-    
+
       const gx = g.x || 0, gy = g.y || 0, gz = g.z || 0;
       const gmag = Math.sqrt(gx*gx + gy*gy + gz*gz);
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
-    
-      // Always store last gravity sample so we can fallback-lock if needed
+
       lastCalibG = { x: gx, y: gy, z: gz, mag: gmag };
-    
-      // If calibration window ended, lock from samples OR fallback-lock from last gravity
+
       if (performance.now() > calibUntilMs) {
         if (calibSamples.length >= 1) {
           lockCalibrationFromSamples();
         } else {
-          // Fallback: if we're reasonably close to flat at end, use the last gz sign
           const cosToZ = Math.abs(lastCalibG.z) / lastCalibG.mag;
-          if (cosToZ >= 0.55) { // ~ within 55° of flat
+          if (cosToZ >= 0.55) {
             const faceUpSign = (lastCalibG.z >= 0) ? +1 : -1;
             faceDownZSign = -faceUpSign;
             calibLocked = true;
           }
-          // else: leave it null; mute won't fire until user gets a good calibration moment
         }
         return;
       }
-    
-      // Stillness REQUIRED during calibration:
+
       let still = false;
       if (event.acceleration && (event.acceleration.x != null || event.acceleration.y != null || event.acceleration.z != null)) {
         still = getAccelMag(event.acceleration) <= CALIB_STILL_ACCEL_MAX;
-      } else {
-        // Fallback stillness: gravity vector not changing much
-        // (compare to previous gravity sample if available)
-        // We can't compare here because we just overwrote lastCalibG,
-        // so keep a separate previous sample:
       }
-    
-      // Simple gravity-delta stillness (needs a persistent prev sample)
+
       if (!updateFaceUpCalibration._prev) updateFaceUpCalibration._prev = { x: gx, y: gy, z: gz };
       const px = updateFaceUpCalibration._prev.x, py = updateFaceUpCalibration._prev.y, pz = updateFaceUpCalibration._prev.z;
       const dmag = Math.sqrt((gx-px)**2 + (gy-py)**2 + (gz-pz)**2);
       updateFaceUpCalibration._prev = { x: gx, y: gy, z: gz };
-    
+
       if (!still) still = dmag <= CALIB_GRAV_DELTA_MAX;
       if (!still) return;
-    
-      // Near-flat requirement (keeps calibration reliable)
+
       const cosToZ = Math.abs(gz) / gmag;
       if (cosToZ < CALIB_NEAR_FLAT_COS) return;
-    
+
       calibSamples.push(gz);
-    
+
       if (calibSamples.length >= CALIB_MIN_SAMPLES) {
         lockCalibrationFromSamples();
       }
@@ -832,45 +830,34 @@
     }
 
     function checkFaceDownOnly(event) {
-      // Must be actively ringing
       if (activeRings.size === 0) {
         faceDownTriggeredThisRingWindow = false;
         return;
       }
-    
-      // Only once per ring
+
       if (faceDownTriggeredThisRingWindow) return;
-    
-      // Do not allow during swing gesture
       if (inSwing) return;
-    
-      // Calibration must be complete (NO fallback here)
       if (!faceDownZSign) return;
-    
+
       const g = event.accelerationIncludingGravity;
       if (!g || g.x == null || g.y == null || g.z == null) return;
-    
+
       const gx = g.x || 0;
       const gy = g.y || 0;
       const gz = g.z || 0;
-    
-      // Normalize Z so positive ALWAYS means face-down
+
       const gzNorm = gz * faceDownZSign;
-    
-      // Hard reject face-up
       if (gzNorm <= 0) return;
-    
+
       const gmag = Math.sqrt(gx * gx + gy * gy + gzNorm * gzNorm);
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
-    
-      // Gravity must be mostly along Z (prevents diagonal false triggers)
+
       if (Math.abs(gzNorm) < 0.55 * gmag) return;
-    
-      // Tilt cone check
+
       const cosToDown = gzNorm / gmag;
       const maxTiltRad = (FACE_DOWN_MAX_TILT_DEG * Math.PI) / 180;
       const cosThreshold = Math.cos(maxTiltRad);
-    
+
       if (cosToDown >= cosThreshold) {
         faceDownTriggeredThisRingWindow = true;
         applyAggressiveDampToActiveRings();
@@ -880,12 +867,12 @@
     function applyAggressiveDampToActiveRings() {
       if (!audioCtx) return;
       const now = audioCtx.currentTime;
-    
+
       activeRings.forEach(r => {
         if (!r || r.ended) return;
-    
+
         const aggressiveDecayTime = Math.min(0.25, (r.safeDuration || 0.25));
-    
+
         try {
           if (typeof r.gain.gain.cancelAndHoldAtTime === "function") {
             r.gain.gain.cancelAndHoldAtTime(now);
@@ -893,17 +880,17 @@
             r.gain.gain.cancelScheduledValues(now);
             r.gain.gain.setValueAtTime(r.gain.gain.value, now);
           }
-    
+
           const current = Math.max(r.gain.gain.value, 0.0002);
-    
-          // Immediate exponential decay — no hold
+
           r.gain.gain.setValueAtTime(current, now);
           r.gain.gain.exponentialRampToValueAtTime(0.0001, now + aggressiveDecayTime);
-    
+
           r.src.stop(now + aggressiveDecayTime + 0.01);
         } catch (e) {}
       });
     }
+
     // ---- Play bell sample ----
     async function playBell(note, intensity = 1, visualDir = null) {
       if (!note) return;
@@ -1100,6 +1087,8 @@
         return;
       }
 
+      // ✅ Start background preload AFTER the user gesture + after AudioContext is resumed
+      preloadAllNotesPromise = null;
       preloadAllNotes();
 
       motionScreen.style.display = "none";
@@ -1153,7 +1142,10 @@
 
         btn.addEventListener("click", async () => {
           await resumeAudioCtx();
+
+          // ✅ Ensure THIS note is ready immediately (instant ring)
           await loadNoteBuffer(n);
+
           showPlayScreen(n);
           playBell(n, 1, null);
         });
@@ -1168,8 +1160,7 @@
         typeof DeviceMotionEvent !== "undefined" &&
         typeof DeviceMotionEvent.requestPermission === "function";
 
-      preloadAllNotes();
-
+      // ✅ Don't auto-preload on load (iOS reliability). Preload starts after Start button.
       if (!needsExplicitPermission) {
         motionScreen.style.display = "none";
         noteScreen.style.display   = "block";
