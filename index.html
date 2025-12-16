@@ -14,7 +14,7 @@
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
-    gtag('config', 'G-3G2H25N85');
+    gtag('config', 'G-3G2QH25N85');
   </script>
 
   <!-- PWA & theme color -->
@@ -621,7 +621,7 @@
     let volumeMaxGain = 1.0;
 
     const noteBuffers = new Map();
-    const noteBufferPromises = new Map(); // ✅ in-flight dedupe (prevents double fetch/decode)
+    const noteBufferPromises = new Map(); // in-flight dedupe
     let preloadAllNotesPromise = null;
 
     function ensureAudioCtx() {
@@ -669,14 +669,23 @@
     }
 
     function preloadAllNotes() {
-      // ✅ Only start once (and only after a user gesture calls this)
       if (preloadAllNotesPromise) return preloadAllNotesPromise;
-
-      preloadAllNotesPromise = Promise.all(
-        NOTES.map(n => loadNoteBuffer(n))
-      ).then(() => console.log("All notes preloaded"));
-
+      preloadAllNotesPromise = Promise.all(NOTES.map(n => loadNoteBuffer(n)))
+        .then(() => console.log("All notes preloaded"));
       return preloadAllNotesPromise;
+    }
+
+    // Preload on intent (touch/pointer down) for the specific note
+    function preloadNoteOnIntent(btn, note) {
+      let started = false;
+      const start = () => {
+        if (started) return;
+        started = true;
+        loadNoteBuffer(note); // fire & forget
+      };
+      btn.addEventListener("touchstart", start, { passive: true });
+      btn.addEventListener("pointerdown", start);
+      btn.addEventListener("mousedown", start);
     }
 
     // Headphone warning
@@ -704,7 +713,7 @@
       sustainValueLabel.textContent = sustainSlider.value;
     });
 
-    // ---- SUSTAIN: exponential fade that does NOT "die early" ----
+    // ---- SUSTAIN ----
     function computeSustainRatio(sustainVal) {
       const s = Math.max(1, Math.min(10, sustainVal));
       return s / 10;
@@ -735,7 +744,7 @@
       return now + targetDuration;
     }
 
-    // ---- FACE-DOWN MUTE + FACE-UP CALIBRATION (your existing code, unchanged) ----
+    // ---- FACE-DOWN MUTE + FACE-UP CALIBRATION ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
 
@@ -767,6 +776,7 @@
       calibLocked = false;
       calibUntilMs = performance.now() + CALIB_WINDOW_MS;
       lastCalibG = null;
+      updateFaceUpCalibration._prev = null;
     }
 
     function updateFaceUpCalibration(event) {
@@ -1087,9 +1097,8 @@
         return;
       }
 
-      // ✅ Start background preload AFTER the user gesture + after AudioContext is resumed
-      preloadAllNotesPromise = null;
-      preloadAllNotes();
+      // NOTE: We intentionally do NOT full-preload here because it can compete
+      // with the first note's fetch/decode and make the first ring feel slower.
 
       motionScreen.style.display = "none";
       noteScreen.style.display   = "block";
@@ -1140,10 +1149,13 @@
         btn.style.background = n.color;
         btn.textContent = n.label;
 
+        // Start loading as soon as user intends to tap
+        preloadNoteOnIntent(btn, n);
+
         btn.addEventListener("click", async () => {
           await resumeAudioCtx();
 
-          // ✅ Ensure THIS note is ready immediately (instant ring)
+          // Ensure this specific note is ready before we proceed
           await loadNoteBuffer(n);
 
           showPlayScreen(n);
@@ -1160,7 +1172,6 @@
         typeof DeviceMotionEvent !== "undefined" &&
         typeof DeviceMotionEvent.requestPermission === "function";
 
-      // ✅ Don't auto-preload on load (iOS reliability). Preload starts after Start button.
       if (!needsExplicitPermission) {
         motionScreen.style.display = "none";
         noteScreen.style.display   = "block";
