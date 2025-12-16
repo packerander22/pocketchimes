@@ -756,16 +756,11 @@
       calibSamples = [];
       calibLocked = false;
       calibUntilMs = performance.now() + CALIB_WINDOW_MS;
-      lastCalibG = null; // reset gravity-delta stillness fallback
+      lastCalibG = null;
     }
 
     function updateFaceUpCalibration(event) {
       if (calibLocked) return;
-    
-      if (performance.now() > calibUntilMs) {
-        if (calibSamples.length >= 1) lockCalibrationFromSamples();
-        return;
-      }
     
       const g = event.accelerationIncludingGravity;
       if (!g || g.x == null || g.y == null || g.z == null) return;
@@ -774,26 +769,47 @@
       const gmag = Math.sqrt(gx*gx + gy*gy + gz*gz);
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
     
-      // Stillness REQUIRED during calibration:
-      // - Prefer event.acceleration when available
-      // - Fallback to "gravity vector not changing much" when acceleration is null
-      let still = false;
+      // Always store last gravity sample so we can fallback-lock if needed
+      lastCalibG = { x: gx, y: gy, z: gz, mag: gmag };
     
-      if (event.acceleration) {
-        still = getAccelMag(event.acceleration) <= CALIB_STILL_ACCEL_MAX;
-      } else {
-        if (lastCalibG) {
-          const dx = gx - lastCalibG.x;
-          const dy = gy - lastCalibG.y;
-          const dz = gz - lastCalibG.z;
-          const dmag = Math.sqrt(dx*dx + dy*dy + dz*dz);
-          still = dmag <= CALIB_GRAV_DELTA_MAX;
+      // If calibration window ended, lock from samples OR fallback-lock from last gravity
+      if (performance.now() > calibUntilMs) {
+        if (calibSamples.length >= 1) {
+          lockCalibrationFromSamples();
+        } else {
+          // Fallback: if we're reasonably close to flat at end, use the last gz sign
+          const cosToZ = Math.abs(lastCalibG.z) / lastCalibG.mag;
+          if (cosToZ >= 0.55) { // ~ within 55° of flat
+            const faceUpSign = (lastCalibG.z >= 0) ? +1 : -1;
+            faceDownZSign = -faceUpSign;
+            calibLocked = true;
+          }
+          // else: leave it null; mute won't fire until user gets a good calibration moment
         }
-        lastCalibG = { x: gx, y: gy, z: gz };
+        return;
       }
     
+      // Stillness REQUIRED during calibration:
+      let still = false;
+      if (event.acceleration && (event.acceleration.x != null || event.acceleration.y != null || event.acceleration.z != null)) {
+        still = getAccelMag(event.acceleration) <= CALIB_STILL_ACCEL_MAX;
+      } else {
+        // Fallback stillness: gravity vector not changing much
+        // (compare to previous gravity sample if available)
+        // We can't compare here because we just overwrote lastCalibG,
+        // so keep a separate previous sample:
+      }
+    
+      // Simple gravity-delta stillness (needs a persistent prev sample)
+      if (!updateFaceUpCalibration._prev) updateFaceUpCalibration._prev = { x: gx, y: gy, z: gz };
+      const px = updateFaceUpCalibration._prev.x, py = updateFaceUpCalibration._prev.y, pz = updateFaceUpCalibration._prev.z;
+      const dmag = Math.sqrt((gx-px)**2 + (gy-py)**2 + (gz-pz)**2);
+      updateFaceUpCalibration._prev = { x: gx, y: gy, z: gz };
+    
+      if (!still) still = dmag <= CALIB_GRAV_DELTA_MAX;
       if (!still) return;
     
+      // Near-flat requirement (keeps calibration reliable)
       const cosToZ = Math.abs(gz) / gmag;
       if (cosToZ < CALIB_NEAR_FLAT_COS) return;
     
