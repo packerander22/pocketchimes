@@ -266,7 +266,6 @@
       margin-bottom: 0.8rem;
     }
 
-    /* -------- Sliders (fully black track + silver thumb) -------- */
     input[type="range"]{
       -webkit-appearance: none;
       appearance: none;
@@ -325,7 +324,6 @@
         inset 0 0 0 1px rgba(248,250,252,0.25);
     }
 
-    /* Gain: left vertical — text BELOW to avoid overlap */
     .gain-control{
       position: fixed;
       left: 0.75rem;
@@ -381,7 +379,6 @@
       line-height: 1.1;
     }
 
-    /* Sustain: bottom CENTER always */
     .sustain-control {
       position: fixed;
       bottom: calc(14px + env(safe-area-inset-bottom));
@@ -493,7 +490,7 @@
     </div>
   </div>
 
-  <div class="sustain-control" id="sustain-wrapper" aria-label="Sustain control">
+  <div class="sustain-control" id="sustain-wrapper" aria-label="Damping control">
     <div class="sustain-header">
       <span class="sustain-title">Damping</span>
       <span class="sustain-value" id="sustain-value-label">10</span>
@@ -668,10 +665,34 @@
       return p;
     }
 
+    // ✅ Progressive preload (prevents CPU spikes from decoding 36 WAVs at once)
     function preloadAllNotes() {
       if (preloadAllNotesPromise) return preloadAllNotesPromise;
-      preloadAllNotesPromise = Promise.all(NOTES.map(n => loadNoteBuffer(n)))
-        .then(() => console.log("All notes preloaded"));
+
+      const CONCURRENCY = 2; // iOS-friendly
+      let idx = 0;
+      let active = 0;
+      let done = 0;
+
+      preloadAllNotesPromise = new Promise((resolve) => {
+        const pump = () => {
+          while (active < CONCURRENCY && idx < NOTES.length) {
+            const n = NOTES[idx++];
+            active++;
+
+            // yield a bit between starts
+            setTimeout(async () => {
+              try { await loadNoteBuffer(n); } catch(e) {}
+              active--;
+              done++;
+              if (done >= NOTES.length) resolve();
+              else pump();
+            }, 0);
+          }
+        };
+        pump();
+      }).then(() => console.log("All notes preloaded (progressive)"));
+
       return preloadAllNotesPromise;
     }
 
@@ -714,28 +735,21 @@
     });
 
     // ---- DAMPING-BASED SUSTAIN ----
-    // Sustain slider controls damping (time constant). Higher value = less damping.
     function dampingTimeConstantFromSlider(val) {
       const v = Math.max(1, Math.min(10, val));
       const t = (v - 1) / 9; // 0..1
-    
-      // Slower decay = longer, gentler ring
-      const tcMin = 0.10;   // strongest damping (still smooth)
-      const tcMax = 3.6;    // very light damping (long ring)
-    
+      const tcMin = 0.12;
+      const tcMax = 4.2;
       return tcMin * Math.pow(tcMax / tcMin, t);
     }
 
     function applyDampingEnvelope(gainNode, now, sustainVal, peakGain) {
-      // start level: avoid denormals/0 and also avoid tiny starts that feel "late"
       const start = Math.max(peakGain, 0.0003);
-      // floor: do NOT use 0 exactly; very low is fine (also used by face-down mute)
       const floor = 0.00001;
 
       const tc = dampingTimeConstantFromSlider(sustainVal);
 
       try {
-        // cancel any previous ramps/targets cleanly
         if (typeof gainNode.gain.cancelAndHoldAtTime === "function") {
           gainNode.gain.cancelAndHoldAtTime(now);
         } else {
@@ -744,8 +758,6 @@
       } catch (e) {}
 
       gainNode.gain.setValueAtTime(start, now);
-
-      // Smooth exponential decay toward floor. No cutoff curve.
       gainNode.gain.setTargetAtTime(floor, now, tc);
 
       return { floor, tc };
@@ -798,16 +810,9 @@
       lastCalibG = { x: gx, y: gy, z: gz, mag: gmag };
 
       if (performance.now() > calibUntilMs) {
-        if (calibSamples.length >= 1) {
-          lockCalibrationFromSamples();
-        } else {
-          const cosToZ = Math.abs(lastCalibG.z) / lastCalibG.mag;
-          if (cosToZ >= 0.55) {
-            const faceUpSign = (lastCalibG.z >= 0) ? +1 : -1;
-            faceDownZSign = -faceUpSign;
-            calibLocked = true;
-          }
-        }
+        // we’ll finalize externally too, but this keeps original behavior
+        if (calibSamples.length >= 1) lockCalibrationFromSamples();
+        else finalizeCalibrationNow(); // fallback to last gravity
         return;
       }
 
@@ -828,10 +833,7 @@
       if (cosToZ < CALIB_NEAR_FLAT_COS) return;
 
       calibSamples.push(gz);
-
-      if (calibSamples.length >= CALIB_MIN_SAMPLES) {
-        lockCalibrationFromSamples();
-      }
+      if (calibSamples.length >= CALIB_MIN_SAMPLES) lockCalibrationFromSamples();
     }
 
     function lockCalibrationFromSamples() {
@@ -841,8 +843,27 @@
 
       const faceUpSign = (medianGz >= 0) ? +1 : -1;
       faceDownZSign = -faceUpSign;
-
       calibLocked = true;
+    }
+
+    // ✅ finalize immediately when user picks a note (use whatever we have)
+    function finalizeCalibrationNow() {
+      if (calibLocked) return;
+
+      if (calibSamples.length >= 1) {
+        lockCalibrationFromSamples();
+        return;
+      }
+
+      if (lastCalibG && isFinite(lastCalibG.mag) && lastCalibG.mag >= GRAVITY_MIN_MAG) {
+        const cosToZ = Math.abs(lastCalibG.z) / lastCalibG.mag;
+        if (cosToZ >= 0.55) {
+          const faceUpSign = (lastCalibG.z >= 0) ? +1 : -1;
+          faceDownZSign = -faceUpSign;
+          calibLocked = true;
+        }
+      }
+      // If still not locked, face-down mute simply won't trigger until reload.
     }
 
     function checkFaceDownOnly(event) {
@@ -901,10 +922,41 @@
 
           r.gain.gain.setValueAtTime(current, now);
           r.gain.gain.exponentialRampToValueAtTime(0.0001, now + aggressiveDecayTime);
-
           r.src.stop(now + aggressiveDecayTime + 0.01);
         } catch (e) {}
       });
+    }
+
+    // ---- ONE-TIME CALIBRATION LISTENER (permission -> note press) ----
+    let calibrationListening = false;
+    let calibrationCompleted = false;
+
+    function calibrationMotionHandler(event) {
+      if (calibrationCompleted) return;
+      updateFaceUpCalibration(event);
+      if (calibLocked) {
+        calibrationCompleted = true;
+        stopCalibrationListening();
+      }
+    }
+
+    function startCalibrationListeningOnce() {
+      if (calibrationListening || calibrationCompleted) return;
+
+      calibrationListening = true;
+      beginFaceUpCalibration();
+      window.addEventListener("devicemotion", calibrationMotionHandler, { passive: true });
+    }
+
+    function stopCalibrationListening(finalize = false) {
+      if (!calibrationListening) return;
+      calibrationListening = false;
+      window.removeEventListener("devicemotion", calibrationMotionHandler);
+
+      if (finalize && !calibrationCompleted) {
+        finalizeCalibrationNow();
+        calibrationCompleted = true;
+      }
     }
 
     // ---- Play bell sample ----
@@ -929,7 +981,6 @@
 
       const safeDuration = Math.max(buffer.duration, 0.05);
 
-      // Set base level
       const peak = volumeMaxGain;
       gain.gain.setValueAtTime(peak, now);
 
@@ -944,22 +995,16 @@
       };
       src.addEventListener("ended", cleanup);
 
-      const sustainVal = parseInt(sustainSlider.value, 10);
+      const dampingVal = parseInt(sustainSlider.value, 10);
+      const { floor } = applyDampingEnvelope(gain, now, dampingVal, peak);
 
-      // Apply damping envelope (smooth, physical)
-      const { floor } = applyDampingEnvelope(gain, now, sustainVal, peak);
-
-      // Prevent any end-click: gently settle toward floor right before the sample ends
       const tailPad = 0.03;
       const endNudgeAt = Math.max(now, now + safeDuration - tailPad);
-      try {
-        gain.gain.setTargetAtTime(floor, endNudgeAt, 0.015);
-      } catch (e) {}
+      try { gain.gain.setTargetAtTime(floor, endNudgeAt, 0.015); } catch (e) {}
 
       src.start(now);
       src.stop(now + safeDuration);
 
-      // Visual
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
@@ -1006,7 +1051,6 @@
     function handleMotion(event) {
       if (!currentNote) return;
 
-      updateFaceUpCalibration(event);
       checkFaceDownOnly(event);
 
       let acc = event.acceleration;
@@ -1064,7 +1108,6 @@
       lastAx = lastAy = lastAz = null;
       inSwing = false;
 
-      beginFaceUpCalibration();
       window.addEventListener("devicemotion", handleMotion);
     }
 
@@ -1103,6 +1146,10 @@
         return;
       }
 
+      // ✅ Start calibration ASAP after permission (once per load)
+      startCalibrationListeningOnce();
+
+      // ✅ progressive preload after user gesture (safer on iOS)
       preloadAllNotesPromise = null;
       preloadAllNotes();
 
@@ -1159,8 +1206,11 @@
 
         btn.addEventListener("click", async () => {
           await resumeAudioCtx();
-          await loadNoteBuffer(n);
 
+          // ✅ Freeze calibration when user commits to a note (do not restart unless reload)
+          if (!calibrationCompleted) stopCalibrationListening(true);
+
+          await loadNoteBuffer(n);
           showPlayScreen(n);
           playBell(n, 1, null);
         });
@@ -1175,13 +1225,16 @@
         typeof DeviceMotionEvent !== "undefined" &&
         typeof DeviceMotionEvent.requestPermission === "function";
 
-      // Safe preload attempt; real decode still benefits most after user gesture
+      // prefetch is okay, but decode still best after gesture
       preloadAllNotes();
 
       if (!needsExplicitPermission) {
         motionScreen.style.display = "none";
         noteScreen.style.display   = "block";
         showHeadphoneWarningOnce();
+
+        // no-permission devices: start calibration immediately
+        startCalibrationListeningOnce();
       }
     });
 
