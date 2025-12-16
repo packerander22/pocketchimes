@@ -495,7 +495,7 @@
 
   <div class="sustain-control" id="sustain-wrapper" aria-label="Sustain control">
     <div class="sustain-header">
-      <span class="sustain-title">Sustain</span>
+      <span class="sustain-title">Damping</span>
       <span class="sustain-value" id="sustain-value-label">10</span>
     </div>
     <input
@@ -506,9 +506,9 @@
       max="10"
       step="1"
       value="10"
-      aria-label="Sustain slider"
+      aria-label="Damping slider"
     />
-    <div class="sustain-hint">10 = full · 1 = damped</div>
+    <div class="sustain-hint">10 = least damped · 1 = most damped</div>
   </div>
 
   <div class="play-screen" id="play-screen" role="main">
@@ -675,7 +675,7 @@
       return preloadAllNotesPromise;
     }
 
-    // Preload on intent (touch/pointer down) for the specific note
+    // Preload on intent (iOS speed fix)
     function preloadNoteOnIntent(btn, note) {
       let started = false;
       const start = () => {
@@ -684,8 +684,8 @@
         loadNoteBuffer(note); // fire & forget
       };
       btn.addEventListener("touchstart", start, { passive: true });
-      btn.addEventListener("pointerdown", start);
       btn.addEventListener("mousedown", start);
+      btn.addEventListener("pointerdown", start);
     }
 
     // Headphone warning
@@ -713,35 +713,40 @@
       sustainValueLabel.textContent = sustainSlider.value;
     });
 
-    // ---- SUSTAIN ----
-    function computeSustainRatio(sustainVal) {
-      const s = Math.max(1, Math.min(10, sustainVal));
-      return s / 10;
+    // ---- DAMPING-BASED SUSTAIN ----
+    // Sustain slider controls damping (time constant). Higher value = less damping.
+    function dampingTimeConstantFromSlider(val) {
+      const v = Math.max(1, Math.min(10, val));
+      const t = (v - 1) / 9; // 0..1
+      const tcMin = 0.06;    // heavy damping
+      const tcMax = 2.20;    // very light damping
+      // exponential mapping feels more natural than linear
+      return tcMin * Math.pow(tcMax / tcMin, t);
     }
 
-    function scheduleSustainEnvelope(gainNode, now, fullDuration, sustainVal, peakGain) {
-      const ratio = computeSustainRatio(sustainVal);
-      const targetDuration = Math.max(0.10, fullDuration * ratio);
-
+    function applyDampingEnvelope(gainNode, now, sustainVal, peakGain) {
+      // start level: avoid denormals/0 and also avoid tiny starts that feel "late"
       const start = Math.max(peakGain, 0.0003);
+      // floor: do NOT use 0 exactly; very low is fine (also used by face-down mute)
       const floor = 0.00001;
 
-      const K = 1.0;
-      const N = 220;
-      const curve = new Float32Array(N);
+      const tc = dampingTimeConstantFromSlider(sustainVal);
 
-      for (let i = 0; i < N; i++) {
-        const t = i / (N - 1);
-        const expNorm = (Math.exp(K * t) - 1) / (Math.exp(K) - 1);
-        const y = 1 - expNorm;
-        curve[i] = floor + (start - floor) * y;
-      }
+      try {
+        // cancel any previous ramps/targets cleanly
+        if (typeof gainNode.gain.cancelAndHoldAtTime === "function") {
+          gainNode.gain.cancelAndHoldAtTime(now);
+        } else {
+          gainNode.gain.cancelScheduledValues(now);
+        }
+      } catch (e) {}
 
-      try { gainNode.gain.cancelScheduledValues(now); } catch(e) {}
       gainNode.gain.setValueAtTime(start, now);
-      gainNode.gain.setValueCurveAtTime(curve, now, targetDuration);
 
-      return now + targetDuration;
+      // Smooth exponential decay toward floor. No cutoff curve.
+      gainNode.gain.setTargetAtTime(floor, now, tc);
+
+      return { floor, tc };
     }
 
     // ---- FACE-DOWN MUTE + FACE-UP CALIBRATION ----
@@ -776,7 +781,6 @@
       calibLocked = false;
       calibUntilMs = performance.now() + CALIB_WINDOW_MS;
       lastCalibG = null;
-      updateFaceUpCalibration._prev = null;
     }
 
     function updateFaceUpCalibration(event) {
@@ -923,7 +927,9 @@
 
       const safeDuration = Math.max(buffer.duration, 0.05);
 
-      gain.gain.setValueAtTime(volumeMaxGain, now);
+      // Set base level
+      const peak = volumeMaxGain;
+      gain.gain.setValueAtTime(peak, now);
 
       const ringRef = { src, gain, ended: false, safeDuration };
       activeRings.add(ringRef);
@@ -938,21 +944,20 @@
 
       const sustainVal = parseInt(sustainSlider.value, 10);
 
-      if (sustainVal >= 10) {
-        const fadeOutTime = 0.02;
-        const fadeStart = now + safeDuration - fadeOutTime;
+      // Apply damping envelope (smooth, physical)
+      const { floor } = applyDampingEnvelope(gain, now, sustainVal, peak);
 
-        gain.gain.setValueAtTime(volumeMaxGain, fadeStart);
-        gain.gain.linearRampToValueAtTime(0.0001, now + safeDuration);
+      // Prevent any end-click: gently settle toward floor right before the sample ends
+      const tailPad = 0.03;
+      const endNudgeAt = Math.max(now, now + safeDuration - tailPad);
+      try {
+        gain.gain.setTargetAtTime(floor, endNudgeAt, 0.015);
+      } catch (e) {}
 
-        src.start(now);
-        src.stop(now + safeDuration);
-      } else {
-        const endTime = scheduleSustainEnvelope(gain, now, safeDuration, sustainVal, volumeMaxGain);
-        src.start(now);
-        src.stop(endTime + 0.01);
-      }
+      src.start(now);
+      src.stop(now + safeDuration);
 
+      // Visual
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
@@ -1058,7 +1063,6 @@
       inSwing = false;
 
       beginFaceUpCalibration();
-
       window.addEventListener("devicemotion", handleMotion);
     }
 
@@ -1097,8 +1101,8 @@
         return;
       }
 
-      // NOTE: We intentionally do NOT full-preload here because it can compete
-      // with the first note's fetch/decode and make the first ring feel slower.
+      preloadAllNotesPromise = null;
+      preloadAllNotes();
 
       motionScreen.style.display = "none";
       noteScreen.style.display   = "block";
@@ -1149,13 +1153,10 @@
         btn.style.background = n.color;
         btn.textContent = n.label;
 
-        // Start loading as soon as user intends to tap
         preloadNoteOnIntent(btn, n);
 
         btn.addEventListener("click", async () => {
           await resumeAudioCtx();
-
-          // Ensure this specific note is ready before we proceed
           await loadNoteBuffer(n);
 
           showPlayScreen(n);
@@ -1171,6 +1172,9 @@
       const needsExplicitPermission =
         typeof DeviceMotionEvent !== "undefined" &&
         typeof DeviceMotionEvent.requestPermission === "function";
+
+      // Safe preload attempt; real decode still benefits most after user gesture
+      preloadAllNotes();
 
       if (!needsExplicitPermission) {
         motionScreen.style.display = "none";
