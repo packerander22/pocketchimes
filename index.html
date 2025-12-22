@@ -1447,42 +1447,42 @@
 
     function handleMotion(event) {
       if (!currentNote) return;
-
+    
       const nowMs = performance.now();
-
+    
       // Update latch continuously (A + C)
       updateFaceUpLatch(event, nowMs);
-
+    
       checkFaceDownOnly(event);
-
+    
       let acc = event.acceleration;
       if (!acc || (acc.x === null && acc.y === null && acc.z === null)) {
         acc = event.accelerationIncludingGravity;
       }
       if (!acc) return;
-
+    
       const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
       const magnitude = Math.sqrt(ax*ax + ay*ay + az*az);
-
+    
       if (lastMagnitude === null || lastAx === null) {
         lastMagnitude = magnitude;
         lastAx = ax; lastAy = ay; lastAz = az;
         return;
       }
-
+    
       const jx = ax - lastAx, jy = ay - lastAy, jz = az - lastAz;
-
+    
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
-
+    
       // If we are below reset threshold, consider the swing "not active"
       if (absDelta < RESET_DELTA) {
         inSwing = false;
         resetSwingVec();
       }
-
-      // Accumulate main swing direction ONLY while building (before reversal)
-      // We weight by signedDelta so main direction becomes dominant.
+    
+      // Accumulate lead-in direction ONLY while building (before reversal)
+      // Keep your weighting (signedDelta) — it helps the dominant direction win.
       const building = Math.abs(signedDelta) > RESET_DELTA;
       if (!inSwing && building) {
         swingVec.x += ax * signedDelta;
@@ -1490,30 +1490,71 @@
         swingVec.z += az * signedDelta;
         swingSamples++;
       }
-
+    
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
       const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
       const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
       const justReversed = wasBuilding && changedDirection;
-
+    
       if (!inSwing && justReversed && nowMs - lastRingTime > MIN_INTERVAL) {
         const peak = Math.abs(lastDelta);
         if (peak >= DELTA_RING_MIN) {
           inSwing = true;
           lastRingTime = nowMs;
-
+    
           const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
           const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
           const visualDir = computeVisualDirFromJerk(jx, jy, jz);
-
+    
           ensureWakeLock();
-
-          // Decide bell(s)
-          const faceUpNow = isFaceUpLatched(nowMs); // latched, not raw
-          const mainSwingN = norm(swingVec);
-          const swingDir = (mainSwingN.m > 0) ? { x: mainSwingN.x, y: mainSwingN.y, z: mainSwingN.z } : { x: jx, y: jy, z: jz };
-
+    
+          // --- Face-up override (latched) ---
+          const faceUpNow = isFaceUpLatched(nowMs);
+    
+          // --- Build blended verdict direction: Lead-in + Opposite Jerk ---
+          // Lead-in (intended)
+          const leadN = norm(swingVec);
+          const leadDir = (leadN.m > 0)
+            ? { x: leadN.x, y: leadN.y, z: leadN.z }
+            : null;
+    
+          // Opposite jerk (strike reality)
+          const oppJerk = { x: -jx, y: -jy, z: -jz };
+          const oppN = norm(oppJerk);
+          const oppDir = (oppN.m > 0)
+            ? { x: oppN.x, y: oppN.y, z: oppN.z }
+            : null;
+    
+          // Weighted blend (tune these if needed)
+          const W_LEAD = 0.62;
+          const W_OPPJ = 0.38;
+    
+          let verdictRaw = { x: 0, y: 0, z: 0 };
+          if (leadDir) {
+            verdictRaw.x += leadDir.x * W_LEAD;
+            verdictRaw.y += leadDir.y * W_LEAD;
+            verdictRaw.z += leadDir.z * W_LEAD;
+          }
+          if (oppDir) {
+            verdictRaw.x += oppDir.x * W_OPPJ;
+            verdictRaw.y += oppDir.y * W_OPPJ;
+            verdictRaw.z += oppDir.z * W_OPPJ;
+          }
+    
+          let verdictN = norm(verdictRaw);
+    
+          // Fallbacks if blend is weak:
+          // 1) lead only, 2) opp-jerk only, 3) raw oppJerk (un-normalized) last-resort
+          const MIN_VERDICT_M = 0.18;
+          if (verdictN.m < MIN_VERDICT_M) verdictN = leadN;
+          if (verdictN.m < MIN_VERDICT_M) verdictN = oppN;
+    
+          const verdictDir = (verdictN.m > 0)
+            ? { x: verdictN.x, y: verdictN.y, z: verdictN.z }
+            : { x: oppJerk.x, y: oppJerk.y, z: oppJerk.z };
+    
+          // --- Decide bell(s) ---
           if (secondNote) {
             // When face-up, ALWAYS ring both (ignore direction completely)
             if (faceUpNow) {
@@ -1522,23 +1563,23 @@
             } else {
               if (dualCalibrating) {
                 // Calibration requires 3 consecutive rings in the SAME direction.
-                // The first ring defines the direction. If next ring flips, it resets and becomes 1/3 (new direction).
+                // Use the blended verdict direction (more robust than either alone).
                 if (!dualForwardVec) {
-                  dualForwardVec = swingDir;
+                  dualForwardVec = verdictDir;
                   dualCalibCount = 1;
                 } else {
-                  const s = dot(swingDir, dualForwardVec);
+                  const s = dot(verdictDir, dualForwardVec);
                   if (s >= 0) {
                     dualCalibCount++;
                   } else {
                     // reset and treat this as the new "away" direction
-                    dualForwardVec = swingDir;
+                    dualForwardVec = verdictDir;
                     dualCalibCount = 1;
                   }
                 }
-
+    
                 calibProgress.textContent = String(dualCalibCount);
-
+    
                 if (dualCalibCount >= 3) {
                   // Normalize final forward vec
                   const nf = norm(dualForwardVec);
@@ -1546,10 +1587,10 @@
                   finishDualCalibration();
                 }
               } else {
-                // Use calibrated forward vec; decide based on MAIN swing direction (not the reversal jerk)
+                // Use calibrated forward vec; decide based on BLENDED verdict
                 const f = dualForwardVec ? dualForwardVec : { x: 1, y: 0, z: 0 };
-                const s = dot(swingDir, f);
-
+                const s = dot(verdictDir, f);
+    
                 if (s >= 0) playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
                 else playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
               }
@@ -1557,16 +1598,17 @@
           } else {
             playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
           }
-
+    
           // reset for next swing direction capture
           resetSwingVec();
         }
       }
-
+    
       lastMagnitude = magnitude;
       lastDelta = signedDelta;
       lastAx = ax; lastAy = ay; lastAz = az;
     }
+
 
     function startMotionListening() {
       lastMagnitude = null;
