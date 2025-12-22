@@ -200,70 +200,56 @@
 
     .play-screen.active { display: flex; }
 
-    /* Unified top buttons style */
-    .ui-btn {
+    /* Shared top button style */
+    .top-btn {
+      position: fixed;
+      top: 0.9rem;
       border-radius: var(--radius-full);
       border: 1px solid rgba(15, 23, 42, 0.4);
       background: rgba(248, 250, 252, 0.92);
       padding: 0.35rem 0.85rem;
       font-size: 0.8rem;
       font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.3rem;
       cursor: pointer;
       box-shadow: 0 8px 16px rgba(15, 23, 42, 0.3);
-      line-height: 1.1;
+      z-index: 60;
+      line-height: 1;
       white-space: nowrap;
-      text-align: center;
     }
-    .ui-btn:active {
+    .top-btn:active {
       transform: translateY(1px) scale(0.98);
       box-shadow: 0 4px 8px rgba(15, 23, 42, 0.45);
     }
 
-    .back-btn {
-      position: fixed;
-      top: 0.9rem;
-      left: 0.9rem;
-      z-index: 60;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      font-weight: 800;
-    }
+    .back-btn { left: 0.9rem; }
+    .add-mode-back { left: 0.9rem; z-index: 70; display:none; }
+    .add-mode-back.active { display:inline-flex; }
 
-    /* Top-right stack (Add / Change / Remove) */
-    .right-stack {
+    .top-right-stack {
       position: fixed;
       top: 0.9rem;
       right: 0.9rem;
       z-index: 60;
       display: none;
       flex-direction: column;
-      gap: 0.5rem;
-      align-items: flex-end; /* hugs right edge */
-      pointer-events: auto;
+      align-items: flex-end;
+      gap: 0.35rem;
     }
-    .right-stack.active { display: flex; }
+    .top-right-stack.active { display: flex; }
 
-    .right-stack .ui-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center; /* fixes “extra space on right” feel */
-      padding: 0.35rem 0.85rem; /* ensure symmetric padding */
+    .stack-btn {
+      position: static; /* stack container controls positioning */
+      right: auto;
+      top: auto;
+      padding: 0.35rem 0.85rem; /* ensure no extra right padding */
+      min-width: 0;
     }
 
-    /* Shown only while choosing the 2nd bell, so you can go back without changing */
-    .add-mode-back {
-      position: fixed;
-      top: 0.9rem;
-      left: 0.9rem;
-      z-index: 70;
-      display: none;
-      align-items: center;
-      gap: 0.3rem;
-    }
-    .add-mode-back.active { display: inline-flex; }
-
-    /* --- Dual layout (only the note/bell area splits) --- */
+    /* --- Dual layout (remove the "tile" look) --- */
     .dual-area {
       width: 100%;
       max-width: 520px;
@@ -271,30 +257,33 @@
       align-items: stretch;
       justify-content: center;
       gap: 0;
-      border-radius: 1.4rem;
-      overflow: hidden;
-      box-shadow: 0 14px 34px rgba(0,0,0,0.28);
       margin-top: 0.2rem;
       margin-bottom: 0.95rem;
+      box-shadow: none;      /* removed tile shadow */
+      border-radius: 0;      /* removed tile rounding */
+      overflow: visible;     /* no “popped out” tile */
+      background: transparent;
     }
+
     .dual-pane {
       flex: 1;
-      padding: 1.25rem 0.8rem 1.0rem;
-      display: flex;
-      flex-direction: column;
+      padding: 0.8rem 0.8rem 0.6rem;
+      display: grid;
+      grid-template-rows: var(--label-slot, 4.9rem) 170px auto;
       align-items: center;
-      justify-content: center;
+      justify-items: center;
       min-height: 320px;
     }
+
     .dual-pane.hidden { display: none; }
 
-    /* Reserve a fixed “label slot” so longer labels never push the bell down */
     .note-slot {
       width: 100%;
-      height: 4.4rem; /* fixed space */
+      min-height: var(--label-slot, 4.9rem);
       display: flex;
-      align-items: center;
+      align-items: flex-end;
       justify-content: center;
+      padding-bottom: 0.55rem; /* extra padding beneath note text */
     }
 
     .play-note-label {
@@ -304,14 +293,14 @@
       text-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
       cursor: pointer;
       user-select: none;
-      line-height: 1.0;
+      line-height: 1.05;
     }
 
     .bell-visual {
       position: relative;
       width: 150px;
       height: 150px;
-      margin-bottom: 0.8rem;
+      margin: 0; /* grid controls vertical centering */
       cursor: pointer;
     }
 
@@ -370,54 +359,62 @@
       text-align: center;
     }
     .calib-toast.active { display: block; }
+
+    .calib-toprow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.55rem;
+      margin-bottom: 0.25rem;
+    }
+
     .calib-title {
       font-weight: 1000;
       letter-spacing: 0.02em;
-      margin-bottom: 0.25rem;
     }
-    .calib-sub {
-      font-size: 0.86rem;
-      opacity: 0.90;
-      line-height: 1.35;
-    }
-    .calib-actions {
-      margin-top: 0.6rem;
-      display: flex;
-      justify-content: center;
-      gap: 0.55rem;
-      align-items: center;
-    }
-    .info-btn {
-      width: 30px;
-      height: 30px;
+
+    .calib-info-btn {
+      width: 26px;
+      height: 26px;
       border-radius: 999px;
       border: 1px solid rgba(2,6,23,0.22);
-      background: rgba(248, 250, 252, 0.92);
+      background: rgba(248,250,252,0.98);
+      color: rgba(2,6,23,0.92);
       display: inline-flex;
       align-items: center;
       justify-content: center;
       font-weight: 1000;
       cursor: pointer;
-      box-shadow: 0 10px 20px rgba(0,0,0,0.18);
+      box-shadow: 0 8px 16px rgba(15,23,42,0.16);
+      line-height: 1;
+      user-select: none;
     }
-    .skip-btn {
+    .calib-info-btn:active { transform: translateY(1px) scale(0.98); }
+
+    .calib-sub {
+      font-size: 0.86rem;
+      opacity: 0.90;
+      line-height: 1.35;
+    }
+
+    .calib-skip {
+      margin-top: 0.55rem;
+      display: none;
+      justify-content: center;
+    }
+    .calib-skip.active { display: flex; }
+
+    .calib-skip-btn {
       border-radius: 999px;
-      border: 1px solid rgba(2,6,23,0.22);
-      background: rgba(248, 250, 252, 0.92);
-      padding: 0.35rem 0.8rem;
-      font-size: 0.78rem;
+      border: 1px solid rgba(2,6,23,0.20);
+      background: rgba(248, 250, 252, 0.96);
+      padding: 0.45rem 0.85rem;
+      font-size: 0.80rem;
       font-weight: 900;
       cursor: pointer;
-      box-shadow: 0 10px 20px rgba(0,0,0,0.18);
+      box-shadow: 0 10px 18px rgba(0,0,0,0.14);
     }
-    .info-panel {
-      display: none;
-      margin-top: 0.55rem;
-      font-size: 0.78rem;
-      line-height: 1.35;
-      opacity: 0.92;
-    }
-    .info-panel.active { display: block; }
+    .calib-skip-btn:active { transform: translateY(1px) scale(0.98); }
 
     /* --- sliders --- */
     input[type="range"]{
@@ -478,6 +475,8 @@
         inset 0 0 0 1px rgba(248,250,252,0.25);
     }
 
+    /* Gain slider: kept, but commented out / not used right now */
+    /*
     .gain-control{
       position: fixed;
       left: 0.75rem;
@@ -532,6 +531,7 @@
       text-align: center;
       line-height: 1.1;
     }
+    */
 
     .sustain-control {
       position: fixed;
@@ -585,20 +585,15 @@
       .play-note-label { font-size: 2.6rem; }
       .hint-text { margin-bottom: 0.4rem; }
       .play-screen { padding-bottom: calc(1.2rem + 96px); }
-      .gain-control { top: 55%; }
-      .dual-pane { min-height: 250px; }
-      .note-slot { height: 3.7rem; }
+      .dual-pane { min-height: 240px; grid-template-rows: 4.2rem 160px auto; }
     }
 
     @media (max-width: 400px) {
       .card, .note-card { padding: 1.2rem 1.2rem 1.3rem; }
       .note-btn { padding: 0.55rem 0.25rem; }
-      .gain-slider { width: 205px; }
-      .gain-control { left: 0.60rem; }
       .sustain-control { width: min(340px, 92vw); }
       .play-screen { padding-bottom: calc(1.2rem + 106px); }
-      .dual-pane { min-height: 320px; }
-      .note-slot { height: 4.6rem; }
+      .dual-pane { min-height: 300px; }
     }
   </style>
 </head>
@@ -613,12 +608,12 @@
         This app uses your phone’s motion sensors so you can swing it like a handbell.
         On iPhone, you’ll be asked to allow motion access.
       </p>
-      <button class="primary-btn" id="start-btn" type="button">Enable motion & start</button>
+      <button class="primary-btn" id="start-btn" type="button">Enable Motion & Start</button>
     </div>
   </div>
 
   <!-- Only shown during "Add Bell" selection so it still looks like the same note screen -->
-  <button class="add-mode-back ui-btn" id="add-mode-back" type="button">← Back</button>
+  <button class="top-btn add-mode-back" id="add-mode-back" type="button">← Back</button>
 
   <div class="app" id="note-screen" style="display:none;" role="main">
     <div class="note-card">
@@ -631,8 +626,9 @@
     </div>
   </div>
 
-  <!-- Gain slider kept in code, but commented-out behavior + not shown -->
-  <div class="gain-control" id="gain-wrapper" aria-label="Gain Control">
+  <!-- Gain slider removed for now (kept in code comments above + JS comments below) -->
+  <!--
+  <div class="gain-control" id="gain-wrapper" aria-label="Gain control">
     <input
       type="range"
       id="gain-slider"
@@ -641,7 +637,7 @@
       max="10"
       step="1"
       value="1"
-      aria-label="Gain Slider"
+      aria-label="Gain slider"
     />
     <div class="gain-text" aria-hidden="true">
       <div class="gain-row">
@@ -651,8 +647,9 @@
       <div class="gain-hint">Higher Can Distort</div>
     </div>
   </div>
+  -->
 
-  <div class="sustain-control" id="sustain-wrapper" aria-label="Damping Control">
+  <div class="sustain-control" id="sustain-wrapper" aria-label="Damping control">
     <div class="sustain-header">
       <span class="sustain-title">Damping</span>
       <span class="sustain-value" id="sustain-value-label">5</span>
@@ -665,59 +662,59 @@
       max="10"
       step="1"
       value="5"
-      aria-label="Damping Slider"
+      aria-label="Damping slider"
     />
     <div class="sustain-hint">10 = Least Damped · 1 = Most Damped</div>
   </div>
 
   <div class="play-screen" id="play-screen" role="main">
-    <button class="back-btn ui-btn" id="back-btn" type="button">← Notes</button>
+    <button class="top-btn back-btn" id="back-btn" type="button">← Notes</button>
 
-    <!-- right stack: Add Bell OR Change/Remove -->
-    <div class="right-stack" id="right-stack" aria-label="Bell Actions">
-      <button class="ui-btn" id="add-bell-btn" type="button">Add Bell</button>
-      <button class="ui-btn" id="change-2nd-btn" type="button" style="display:none;">Change 2nd Bell</button>
-      <button class="ui-btn" id="remove-bell-btn" type="button" style="display:none;">Remove Bell</button>
+    <div class="top-right-stack" id="top-right-stack">
+      <button class="top-btn stack-btn" id="add-bell-btn" type="button">Add Bell</button>
+      <button class="top-btn stack-btn" id="change-2nd-btn" type="button" style="display:none;">Change 2nd Bell</button>
+      <button class="top-btn stack-btn" id="remove-bell-btn" type="button" style="display:none;">Remove Bell</button>
     </div>
 
     <div class="calib-toast" id="calib-toast" aria-live="polite">
-      <div class="calib-title">Calibrate Forward Ring</div>
+      <div class="calib-toprow">
+        <div class="calib-title">Calibrate Forward Ring</div>
+        <div class="calib-info-btn" id="calib-info-btn" role="button" aria-label="Info">i</div>
+      </div>
       <div class="calib-sub">
         Ring the phone <b>Away From You</b> 3 times. (Hold it the same way you’ll play.)
         <br/>Progress: <span id="calib-progress">0</span>/3
       </div>
-
-      <div class="calib-actions">
-        <button class="info-btn" id="calib-info-btn" type="button" aria-label="Calibration Info">i</button>
-        <button class="skip-btn" id="calib-skip-btn" type="button">Skip</button>
-      </div>
-      <div class="info-panel" id="calib-info-panel">
-        If you can’t swing your device right now, you can skip calibration. Direction may feel less consistent,
-        but you can still tap to ring, and Face-Up mode will ring both bells together.
+      <div class="calib-skip" id="calib-skip-wrap">
+        <button class="calib-skip-btn" id="calib-skip-btn" type="button">Skip Calibration</button>
       </div>
     </div>
 
     <div class="dual-area" id="dual-area" aria-label="Bell area">
       <div class="dual-pane" id="pane-left">
         <div class="note-slot">
-          <div class="play-note-label" id="play-note-label-left">C</div>
+          <div class="play-note-label" id="play-note-label-left">C5</div>
         </div>
 
         <div class="bell-visual" id="bell-visual-left" role="button" aria-label="Tap to ring left bell" tabindex="0">
           <div class="bell-ring" id="bell-ring-left"></div>
           <div class="bell-clapper"></div>
         </div>
+
+        <div style="height: 10px;"></div>
       </div>
 
       <div class="dual-pane hidden" id="pane-right">
         <div class="note-slot">
-          <div class="play-note-label" id="play-note-label-right">D</div>
+          <div class="play-note-label" id="play-note-label-right">D5</div>
         </div>
 
         <div class="bell-visual" id="bell-visual-right" role="button" aria-label="Tap to ring right bell" tabindex="0">
           <div class="bell-ring" id="bell-ring-right"></div>
           <div class="bell-clapper"></div>
         </div>
+
+        <div style="height: 10px;"></div>
       </div>
     </div>
 
@@ -781,7 +778,6 @@
         const fileName = `${p.name}${oct}.wav`;
         const encodedFile = encodeURIComponent(fileName);
 
-        // keep label style the same as your current build
         let label;
         if (oct === 5) label = `${p.name} (Low)`;
         else if (oct === 6) label = p.name;
@@ -804,12 +800,12 @@
     const noteSubEl     = document.getElementById("note-subtitle");
     const noteHelpEl    = document.getElementById("note-help");
 
-    const addModeBack   = document.getElementById("add-mode-back");
-
-    const rightStack    = document.getElementById("right-stack");
+    const topRightStack = document.getElementById("top-right-stack");
     const addBellBtn    = document.getElementById("add-bell-btn");
     const change2ndBtn  = document.getElementById("change-2nd-btn");
     const removeBellBtn = document.getElementById("remove-bell-btn");
+
+    const addModeBack   = document.getElementById("add-mode-back");
 
     const paneRight     = document.getElementById("pane-right");
 
@@ -825,12 +821,8 @@
     const calibToast    = document.getElementById("calib-toast");
     const calibProgress = document.getElementById("calib-progress");
     const calibInfoBtn  = document.getElementById("calib-info-btn");
+    const calibSkipWrap = document.getElementById("calib-skip-wrap");
     const calibSkipBtn  = document.getElementById("calib-skip-btn");
-    const calibInfoPanel= document.getElementById("calib-info-panel");
-
-    const gainWrapper    = document.getElementById("gain-wrapper");
-    const gainSlider     = document.getElementById("gain-slider");
-    const gainValueLabel = document.getElementById("gain-value-label");
 
     const sustainWrapper    = document.getElementById("sustain-wrapper");
     const sustainSlider     = document.getElementById("sustain-slider");
@@ -838,10 +830,12 @@
 
     // ---- AUDIO ----
     let audioCtx = null;
+
+    // Gain slider disabled for now — fixed gain.
     let volumeMaxGain = 1.0;
 
     const noteBuffers = new Map();
-    const noteBufferPromises = new Map();
+    const noteBufferPromises = new Map(); // in-flight dedupe
     let preloadAllNotesPromise = null;
 
     function ensureAudioCtx() {
@@ -871,7 +865,6 @@
       if (!audioCtx) return null;
 
       const p = (async () => {
-        // audio: keep cached
         const resp = await fetch(note.file, { cache: "force-cache" });
         if (!resp.ok) throw new Error(`Failed to fetch ${note.file}: ${resp.status}`);
         const arr = await resp.arrayBuffer();
@@ -892,7 +885,7 @@
     function preloadAllNotes() {
       if (preloadAllNotesPromise) return preloadAllNotesPromise;
 
-      const CONCURRENCY = 2;
+      const CONCURRENCY = 2; // iOS-friendly
       let idx = 0;
       let active = 0;
       let done = 0;
@@ -929,7 +922,6 @@
       btn.addEventListener("pointerdown", start);
     }
 
-    // Headphone warning
     let headphoneWarningShown = false;
     function showHeadphoneWarningOnce() {
       if (headphoneWarningShown) return;
@@ -943,13 +935,6 @@
     }
 
     // ---- SLIDERS ----
-    // Gain slider removed from UI flow (kept in code for later)
-    gainValueLabel.textContent = gainSlider.value;
-    gainSlider.addEventListener("input", () => {
-      volumeMaxGain = parseFloat(gainSlider.value);
-      gainValueLabel.textContent = gainSlider.value;
-    });
-
     sustainValueLabel.textContent = sustainSlider.value;
     sustainSlider.addEventListener("input", () => {
       sustainValueLabel.textContent = sustainSlider.value;
@@ -990,6 +975,7 @@
     const FACE_DOWN_MAX_TILT_DEG = 30;
     const GRAVITY_MIN_MAG = 7.0;
 
+    // requested lockout for turn-to-mute after any bell ring
     const TURN_MUTE_LOCKOUT_MS = 200;
     let lastBellPlayMs = 0;
 
@@ -1004,6 +990,13 @@
     const CALIB_MIN_SAMPLES = 16;
     const CALIB_NEAR_FLAT_COS = Math.cos((55 * Math.PI) / 180);
     const CALIB_GRAV_DELTA_MAX = 0.30;
+
+    // Face-up latch (A + C): smooths big-swing misreads
+    let faceUpLatchedUntilMs = 0;
+    const FACEUP_LATCH_HOLD_MS = 320; // sticky window
+    const FACEUP_ENTER_COS = -0.82;   // enter when strongly face-up
+    const FACEUP_EXIT_COS  = -0.60;   // exit only when clearly not face-up
+    let faceUpState = false;
 
     function getAccelMag(a) {
       if (!a) return Infinity;
@@ -1085,23 +1078,45 @@
       }
     }
 
-    function isFaceUp(event) {
-      if (!faceDownZSign) return false;
+    function computeCosToDownFromEvent(event) {
+      if (!faceDownZSign) return null;
       const g = event.accelerationIncludingGravity;
-      if (!g || g.x == null || g.y == null || g.z == null) return false;
+      if (!g || g.x == null || g.y == null || g.z == null) return null;
 
       const gx = g.x || 0, gy = g.y || 0, gz = g.z || 0;
-      const gmag = Math.sqrt(gx*gx + gy*gy + gz*gz);
-      if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return false;
 
-      const gzNorm = (gz || 0) * faceDownZSign;
-      if (Math.abs(gzNorm) < 0.55 * gmag) return false;
+      const gzNorm = gz * faceDownZSign; // positive when facing down
+      const gmag = Math.sqrt(gx*gx + gy*gy + gzNorm*gzNorm);
+      if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return null;
 
-      const maxTiltRad = (FACE_DOWN_MAX_TILT_DEG * Math.PI) / 180;
-      const cosThreshold = Math.cos(maxTiltRad);
-      const cosToDown = gzNorm / gmag;
+      // require sufficiently aligned with Z so we're not edge-on
+      if (Math.abs(gzNorm) < 0.55 * gmag) return null;
 
-      return (cosToDown <= -cosThreshold);
+      return (gzNorm / gmag); // +1 = down, -1 = up
+    }
+
+    function updateFaceUpLatch(event, nowMs) {
+      const cosToDown = computeCosToDownFromEvent(event);
+      if (cosToDown == null) return;
+
+      if (!faceUpState) {
+        // enter face-up only when confidently up
+        if (cosToDown <= FACEUP_ENTER_COS) {
+          faceUpState = true;
+          faceUpLatchedUntilMs = nowMs + FACEUP_LATCH_HOLD_MS;
+        }
+      } else {
+        // while face-up, refresh latch when still looks up-ish
+        if (cosToDown <= FACEUP_EXIT_COS) {
+          faceUpLatchedUntilMs = nowMs + FACEUP_LATCH_HOLD_MS;
+        } else if (nowMs > faceUpLatchedUntilMs) {
+          faceUpState = false;
+        }
+      }
+    }
+
+    function isFaceUpLatched(nowMs) {
+      return faceUpState && nowMs <= faceUpLatchedUntilMs;
     }
 
     function checkFaceDownOnly(event) {
@@ -1110,28 +1125,16 @@
         return;
       }
 
+      // prevent within 200ms of any ring
       if (performance.now() - lastBellPlayMs < TURN_MUTE_LOCKOUT_MS) return;
 
       if (faceDownTriggeredThisRingWindow) return;
       if (inSwing) return;
       if (!faceDownZSign) return;
 
-      const g = event.accelerationIncludingGravity;
-      if (!g || g.x == null || g.y == null || g.z == null) return;
+      const cosToDown = computeCosToDownFromEvent(event);
+      if (cosToDown == null) return;
 
-      const gx = g.x || 0;
-      const gy = g.y || 0;
-      const gz = g.z || 0;
-
-      const gzNorm = gz * faceDownZSign;
-      if (gzNorm <= 0) return;
-
-      const gmag = Math.sqrt(gx * gx + gy * gy + gzNorm * gzNorm);
-      if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return;
-
-      if (Math.abs(gzNorm) < 0.55 * gmag) return;
-
-      const cosToDown = gzNorm / gmag;
       const maxTiltRad = (FACE_DOWN_MAX_TILT_DEG * Math.PI) / 180;
       const cosThreshold = Math.cos(maxTiltRad);
 
@@ -1199,97 +1202,58 @@
       }
     }
 
-    // ---- Helpers (vectors + easing) ----
-    function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
-    function magVec(v){ return Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
-    function normVec(v){
-      const m = magVec(v);
-      if (!isFinite(m) || m < 1e-6) return { x: 1, y: 0, z: 0 };
-      return { x: v.x / m, y: v.y / m, z: v.z / m };
-    }
-
-    // ---- Dual-bell state + calibration (best method: 1D along learned swing axis) ----
+    // ---- Dual-bell state + calibration (forward vs opposite) ----
     let currentNote = null;         // primary (left)
     let secondNote = null;          // secondary (right)
 
     let dualCalibrating = false;
     let dualCalibCount = 0;
 
-    // The learned "away from you" swing axis (normalized).
-    // Direction decision uses projection onto this axis.
-    let dualSwingAxis = null;
+    // normalized swing direction for "Away From You"
+    let dualForwardVec = null;
 
-    // Calibration tracking (requires 3 in a row; opposite resets and becomes new direction)
-    let calibCandidateAxis = null;
-    let calibAxes = [];
-
-    // During normal play: accumulate 1D projected motion along dualSwingAxis
-    let projSum = 0;
-    let projSamples = 0;
-    let lastDualSide = +1; // +1 primary, -1 secondary
-    const DECISION_DEADZONE = 0.08; // stickiness near boundary
-
-    // For calibration + accumulation timing
-    let lastMotionMs = null;
+    // Skip gating: user must click Info first
+    let skipUnlocked = false;
 
     function resetDualMode() {
       secondNote = null;
       dualCalibrating = false;
       dualCalibCount = 0;
-      dualSwingAxis = null;
-      calibCandidateAxis = null;
-      calibAxes = [];
-
-      projSum = 0;
-      projSamples = 0;
-      lastDualSide = +1;
+      dualForwardVec = null;
+      skipUnlocked = false;
 
       calibToast.classList.remove("active");
       calibProgress.textContent = "0";
-      calibInfoPanel.classList.remove("active");
+      calibSkipWrap.classList.remove("active");
 
       setSingleUI();
-      updateRightStack();
+      refreshTopRightButtons();
     }
 
     function startDualCalibration() {
       dualCalibrating = true;
       dualCalibCount = 0;
-      dualSwingAxis = null;
-
-      calibCandidateAxis = null;
-      calibAxes = [];
-
-      projSum = 0;
-      projSamples = 0;
-
+      dualForwardVec = null; // will lock onto first consistent direction
       calibProgress.textContent = "0";
+
+      skipUnlocked = false;
+      calibSkipWrap.classList.remove("active");
+
       calibToast.classList.add("active");
-      calibInfoPanel.classList.remove("active");
     }
 
-    function finishDualCalibrationFromAxes() {
-      if (calibAxes.length < 1) {
-        dualSwingAxis = normVec({ x: 1, y: 0, z: 0 });
-      } else {
-        // Average accepted axes
-        let ax = 0, ay = 0, az = 0;
-        calibAxes.forEach(v => { ax += v.x; ay += v.y; az += v.z; });
-        dualSwingAxis = normVec({ x: ax, y: ay, z: az });
-      }
+    function finishDualCalibration() {
+      // If we still somehow never got a forward vec, default.
+      if (!dualForwardVec) dualForwardVec = { x: 1, y: 0, z: 0 };
       dualCalibrating = false;
       calibToast.classList.remove("active");
-      projSum = 0;
-      projSamples = 0;
     }
 
     function skipDualCalibration() {
+      // Only allowed after info click
+      dualForwardVec = { x: 1, y: 0, z: 0 };
       dualCalibrating = false;
-      // Fallback axis (best-effort) if they can’t move: at least consistent within device frame
-      if (!dualSwingAxis) dualSwingAxis = normVec({ x: 1, y: 0, z: 0 });
       calibToast.classList.remove("active");
-      projSum = 0;
-      projSamples = 0;
     }
 
     function setSingleUI() {
@@ -1301,19 +1265,6 @@
       paneRight.classList.remove("hidden");
       playScreen.style.background =
         `linear-gradient(90deg, ${currentNote.color} 0%, ${currentNote.color} 50%, ${secondNote.color} 50%, ${secondNote.color} 100%)`;
-    }
-
-    function updateRightStack() {
-      const inPlay = playScreen.classList.contains("active") && !!currentNote;
-      rightStack.classList.toggle("active", inPlay);
-
-      if (!inPlay) return;
-
-      const hasSecond = !!secondNote;
-
-      addBellBtn.style.display = hasSecond ? "none" : "inline-flex";
-      change2ndBtn.style.display = hasSecond ? "inline-flex" : "none";
-      removeBellBtn.style.display = hasSecond ? "inline-flex" : "none";
     }
 
     // ---- Add-bell mode uses the SAME note screen ----
@@ -1339,45 +1290,99 @@
       playScreen.classList.remove("active");
       noteScreen.style.display = "block";
 
-      // keep gain slider disabled in UI flow
-      // gainWrapper.classList.remove("active");
       sustainWrapper.classList.remove("active");
 
       addModeBack.classList.toggle("active", mode === "secondary");
-      updateRightStack();
+
+      // hide play top buttons while in note screen
+      topRightStack.classList.remove("active");
+      refreshDisabledButtonsForMode();
     }
 
     function showPlayScreen() {
       noteScreen.style.display = "none";
       playScreen.classList.add("active");
 
-      // keep gain slider disabled in UI flow (commented out)
-      // gainWrapper.classList.add("active");
       sustainWrapper.classList.add("active");
 
+      topRightStack.classList.add("active");
       addModeBack.classList.remove("active");
 
       if (currentNote && secondNote) setDualUI();
       else if (currentNote) setSingleUI();
 
-      updateRightStack();
+      refreshTopRightButtons();
     }
 
-    // ---- Audio playback (single + dual sync) ----
-    function computeVisualDirFromJerk(jx, jy, jz) {
-      const absX = Math.abs(jx), absY = Math.abs(jy), absZ = Math.abs(jz);
-      const maxComp = Math.max(absX, absY, absZ);
-      const MIN_JERK = 0.3;
+    function refreshTopRightButtons() {
+      if (!currentNote) {
+        addBellBtn.style.display = "none";
+        change2ndBtn.style.display = "none";
+        removeBellBtn.style.display = "none";
+        return;
+      }
 
-      if (maxComp < MIN_JERK) return Math.random() < 0.5 ? "left" : "right";
-      if (maxComp === absX) return jx > 0 ? "left" : "right";
-      if (maxComp === absY) return jy > 0 ? "up" : "down";
-      return jz > 0 ? "up" : "down";
+      if (!secondNote) {
+        addBellBtn.style.display = "inline-flex";
+        change2ndBtn.style.display = "none";
+        removeBellBtn.style.display = "none";
+      } else {
+        addBellBtn.style.display = "none";
+        change2ndBtn.style.display = "inline-flex";
+        removeBellBtn.style.display = "inline-flex";
+      }
     }
 
-    function animateRing(ringEl, intensity = 1, visualDir = null) {
-      if (!ringEl) return;
+    // ---- Play bell sample ----
+    async function playBellToRingEl(note, ringEl, intensity = 1, visualDir = null) {
+      if (!note) return;
 
+      ensureAudioCtx();
+      if (!audioCtx) return;
+
+      if (audioCtx.state === "suspended") await audioCtx.resume();
+
+      const buffer = await loadNoteBuffer(note);
+      if (!buffer) return;
+
+      const now = audioCtx.currentTime;
+      const src = audioCtx.createBufferSource();
+      src.buffer = buffer;
+
+      const gain = audioCtx.createGain();
+      src.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      const safeDuration = Math.max(buffer.duration, 0.05);
+
+      const peak = volumeMaxGain;
+      gain.gain.setValueAtTime(peak, now);
+
+      const ringRef = { src, gain, ended: false, safeDuration };
+      activeRings.add(ringRef);
+      faceDownTriggeredThisRingWindow = false;
+
+      const cleanup = () => {
+        ringRef.ended = true;
+        activeRings.delete(ringRef);
+        if (activeRings.size === 0) faceDownTriggeredThisRingWindow = false;
+      };
+      src.addEventListener("ended", cleanup);
+
+      const dampingVal = parseInt(sustainSlider.value, 10);
+      const { floor } = applyDampingEnvelope(gain, now, dampingVal, peak);
+
+      const tailPad = 0.03;
+      const endNudgeAt = Math.max(now, now + safeDuration - tailPad);
+      try { gain.gain.setTargetAtTime(floor, endNudgeAt, 0.015); } catch (e) {}
+
+      src.start(now);
+      src.stop(now + safeDuration);
+
+      // mark last bell play time for turn-to-mute lockout
+      lastBellPlayMs = performance.now();
+
+      // visuals
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
@@ -1392,77 +1397,10 @@
       else if (dir === "down") transform = `translate(0px, ${offset}px) rotate(0deg)`;
       else transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * offset}deg)`;
 
-      ringEl.style.transform = transform;
-      setTimeout(() => { ringEl.style.transform = "translate(0px, 0px) rotate(0deg)"; }, 180);
-    }
-
-    function scheduleBufferPlay(buffer, ringEl, intensity, visualDir, atTime) {
-      if (!audioCtx || !buffer) return;
-
-      const src = audioCtx.createBufferSource();
-      src.buffer = buffer;
-
-      const gain = audioCtx.createGain();
-      src.connect(gain);
-      gain.connect(audioCtx.destination);
-
-      const safeDuration = Math.max(buffer.duration, 0.05);
-
-      const peak = volumeMaxGain;
-      gain.gain.setValueAtTime(peak, atTime);
-
-      const ringRef = { src, gain, ended: false, safeDuration };
-      activeRings.add(ringRef);
-      faceDownTriggeredThisRingWindow = false;
-
-      const cleanup = () => {
-        ringRef.ended = true;
-        activeRings.delete(ringRef);
-        if (activeRings.size === 0) faceDownTriggeredThisRingWindow = false;
-      };
-      src.addEventListener("ended", cleanup);
-
-      const dampingVal = parseInt(sustainSlider.value, 10);
-      const { floor } = applyDampingEnvelope(gain, atTime, dampingVal, peak);
-
-      const tailPad = 0.03;
-      const endNudgeAt = Math.max(atTime, atTime + safeDuration - tailPad);
-      try { gain.gain.setTargetAtTime(floor, endNudgeAt, 0.015); } catch (e) {}
-
-      src.start(atTime);
-      src.stop(atTime + safeDuration);
-
-      lastBellPlayMs = performance.now();
-      animateRing(ringEl, intensity, visualDir);
-    }
-
-    async function playBell(note, ringEl, intensity = 1, visualDir = null, atTime = null) {
-      if (!note) return;
-
-      ensureAudioCtx();
-      if (!audioCtx) return;
-      if (audioCtx.state === "suspended") await audioCtx.resume();
-
-      const buffer = await loadNoteBuffer(note);
-      if (!buffer) return;
-
-      const t = (atTime != null) ? atTime : audioCtx.currentTime;
-      scheduleBufferPlay(buffer, ringEl, intensity, visualDir, t);
-    }
-
-    async function playBothBells(intensity = 1, visualDir = null) {
-      if (!currentNote || !secondNote) return;
-
-      ensureAudioCtx();
-      if (!audioCtx) return;
-      if (audioCtx.state === "suspended") await audioCtx.resume();
-
-      const [b1, b2] = await Promise.all([loadNoteBuffer(currentNote), loadNoteBuffer(secondNote)]);
-      if (!b1 || !b2) return;
-
-      const t = audioCtx.currentTime + 0.002; // tiny alignment nudge
-      scheduleBufferPlay(b1, bellRingLeft, intensity, visualDir, t);
-      scheduleBufferPlay(b2, bellRingRight, intensity, visualDir, t);
+      if (ringEl) {
+        ringEl.style.transform = transform;
+        setTimeout(() => { ringEl.style.transform = "translate(0px, 0px) rotate(0deg)"; }, 180);
+      }
     }
 
     // ---- MOTION HANDLING ----
@@ -1478,59 +1416,42 @@
     let lastDelta = 0;
     let lastAx = null, lastAy = null, lastAz = null;
 
-    // We accumulate projected motion along dualSwingAxis during the buildup window
-    function accumulateProjection(acc, dtSec) {
-      if (!secondNote) return;
-      if (dualCalibrating) return;
-      if (!dualSwingAxis) return;
-      if (!acc) return;
-      if (!isFinite(dtSec) || dtSec <= 0) return;
+    // Combine both worlds:
+    // - detect ring on reversal (same as now)
+    // - decide direction using the MAIN swing direction accumulated during the build phase
+    let swingVec = { x: 0, y: 0, z: 0 };
+    let swingSamples = 0;
 
-      // Only accumulate while we're in the "buildup" phase (magnitude trending)
-      // Keep it simple: accumulate whenever absDelta is above RESET threshold and not currently ringing
-      const proj = (acc.x || 0) * dualSwingAxis.x + (acc.y || 0) * dualSwingAxis.y + (acc.z || 0) * dualSwingAxis.z;
-      projSum += proj * dtSec;
-      projSamples += 1;
+    function computeVisualDirFromJerk(jx, jy, jz) {
+      const absX = Math.abs(jx), absY = Math.abs(jy), absZ = Math.abs(jz);
+      const maxComp = Math.max(absX, absY, absZ);
+      const MIN_JERK = 0.3;
+
+      if (maxComp < MIN_JERK) return Math.random() < 0.5 ? "left" : "right";
+      if (maxComp === absX) return jx > 0 ? "left" : "right";
+      if (maxComp === absY) return jy > 0 ? "up" : "down";
+      return jz > 0 ? "up" : "down";
     }
 
-    function handleCalibrationRingVector(accWindowVec, jerkVec) {
-      // Prefer integrated accel over the window; fallback to jerk if tiny
-      let v = accWindowVec;
-      if (!v || magVec(v) < 0.05) v = jerkVec;
-      const vn = normVec(v);
-
-      if (!calibCandidateAxis) {
-        calibCandidateAxis = vn;
-        calibAxes = [vn];
-        dualCalibCount = 1;
-        calibProgress.textContent = "1";
-        return;
-      }
-
-      // If opposite direction: reset and treat this as new "away"
-      if (dot(vn, calibCandidateAxis) < 0) {
-        calibCandidateAxis = vn;
-        calibAxes = [vn];
-        dualCalibCount = 1;
-        calibProgress.textContent = "1";
-        return;
-      }
-
-      // Same direction: count it
-      calibAxes.push(vn);
-      dualCalibCount = calibAxes.length;
-      calibProgress.textContent = String(dualCalibCount);
-
-      if (dualCalibCount >= 3) {
-        finishDualCalibrationFromAxes();
-      }
+    function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
+    function norm(v) {
+      const m = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+      if (!isFinite(m) || m < 1e-6) return { x: 0, y: 0, z: 0, m: 0 };
+      return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
 
-    // Calibration window accumulation (for each ring attempt)
-    let calibWindowVec = { x: 0, y: 0, z: 0 };
+    function resetSwingVec() {
+      swingVec.x = 0; swingVec.y = 0; swingVec.z = 0;
+      swingSamples = 0;
+    }
 
     function handleMotion(event) {
       if (!currentNote) return;
+
+      const nowMs = performance.now();
+
+      // Update latch continuously (A + C)
+      updateFaceUpLatch(event, nowMs);
 
       checkFaceDownOnly(event);
 
@@ -1543,10 +1464,6 @@
       const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
       const magnitude = Math.sqrt(ax*ax + ay*ay + az*az);
 
-      const nowMs = performance.now();
-      const dtSec = (lastMotionMs == null) ? 0 : Math.min(0.05, Math.max(0, (nowMs - lastMotionMs) / 1000));
-      lastMotionMs = nowMs;
-
       if (lastMagnitude === null || lastAx === null) {
         lastMagnitude = magnitude;
         lastAx = ax; lastAy = ay; lastAz = az;
@@ -1558,22 +1475,20 @@
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
 
+      // If we are below reset threshold, consider the swing "not active"
       if (absDelta < RESET_DELTA) {
         inSwing = false;
-        // reset projection between swings so it doesn't drift
-        projSum = 0;
-        projSamples = 0;
-        if (dualCalibrating) calibWindowVec = { x: 0, y: 0, z: 0 };
-      } else {
-        // Accumulate calibration window vector ONLY while calibrating
-        if (dualCalibrating) {
-          calibWindowVec.x += ax * dtSec;
-          calibWindowVec.y += ay * dtSec;
-          calibWindowVec.z += az * dtSec;
-        } else {
-          // Accumulate direction projection in dual mode
-          accumulateProjection({ x: ax, y: ay, z: az }, dtSec);
-        }
+        resetSwingVec();
+      }
+
+      // Accumulate main swing direction ONLY while building (before reversal)
+      // We weight by signedDelta so main direction becomes dominant.
+      const building = Math.abs(signedDelta) > RESET_DELTA;
+      if (!inSwing && building) {
+        swingVec.x += ax * signedDelta;
+        swingVec.y += ay * signedDelta;
+        swingVec.z += az * signedDelta;
+        swingSamples++;
       }
 
       const prevSign = Math.sign(lastDelta);
@@ -1594,41 +1509,57 @@
 
           ensureWakeLock();
 
-          // Dual mode logic
+          // Decide bell(s)
+          const faceUpNow = isFaceUpLatched(nowMs); // latched, not raw
+          const mainSwingN = norm(swingVec);
+          const swingDir = (mainSwingN.m > 0) ? { x: mainSwingN.x, y: mainSwingN.y, z: mainSwingN.z } : { x: jx, y: jy, z: jz };
+
           if (secondNote) {
-            // Face-up ALWAYS rings both, ignoring direction logic completely
-            if (isFaceUp(event)) {
-              playBothBells(intensity, visualDir);
-            } else if (dualCalibrating) {
-              const jerkV = { x: jx, y: jy, z: jz };
-              handleCalibrationRingVector(calibWindowVec, jerkV);
-              // reset window for next ring attempt
-              calibWindowVec = { x: 0, y: 0, z: 0 };
+            // When face-up, ALWAYS ring both (ignore direction completely)
+            if (faceUpNow) {
+              playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+              playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
             } else {
-              // Best method: decide direction from projected motion along learned axis
-              // If projection is tiny, stick with last side.
-              let s = projSum;
+              if (dualCalibrating) {
+                // Calibration requires 3 consecutive rings in the SAME direction.
+                // The first ring defines the direction. If next ring flips, it resets and becomes 1/3 (new direction).
+                if (!dualForwardVec) {
+                  dualForwardVec = swingDir;
+                  dualCalibCount = 1;
+                } else {
+                  const s = dot(swingDir, dualForwardVec);
+                  if (s >= 0) {
+                    dualCalibCount++;
+                  } else {
+                    // reset and treat this as the new "away" direction
+                    dualForwardVec = swingDir;
+                    dualCalibCount = 1;
+                  }
+                }
 
-              if (!isFinite(s) || Math.abs(s) < DECISION_DEADZONE || projSamples < 2) {
-                s = lastDualSide;
-              }
+                calibProgress.textContent = String(dualCalibCount);
 
-              if (s >= 0) {
-                lastDualSide = +1;
-                playBell(currentNote, bellRingLeft, intensity, visualDir);
+                if (dualCalibCount >= 3) {
+                  // Normalize final forward vec
+                  const nf = norm(dualForwardVec);
+                  dualForwardVec = (nf.m > 0) ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
+                  finishDualCalibration();
+                }
               } else {
-                lastDualSide = -1;
-                playBell(secondNote, bellRingRight, intensity, visualDir);
-              }
+                // Use calibrated forward vec; decide based on MAIN swing direction (not the reversal jerk)
+                const f = dualForwardVec ? dualForwardVec : { x: 1, y: 0, z: 0 };
+                const s = dot(swingDir, f);
 
-              // reset for next swing
-              projSum = 0;
-              projSamples = 0;
+                if (s >= 0) playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+                else playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+              }
             }
           } else {
-            // Single mode
-            playBell(currentNote, bellRingLeft, intensity, visualDir);
+            playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
           }
+
+          // reset for next swing direction capture
+          resetSwingVec();
         }
       }
 
@@ -1642,12 +1573,7 @@
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
-      lastMotionMs = null;
-
-      projSum = 0;
-      projSamples = 0;
-      calibWindowVec = { x: 0, y: 0, z: 0 };
-
+      resetSwingVec();
       window.addEventListener("devicemotion", handleMotion);
     }
 
@@ -1657,11 +1583,7 @@
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
-      lastMotionMs = null;
-
-      projSum = 0;
-      projSamples = 0;
-      calibWindowVec = { x: 0, y: 0, z: 0 };
+      resetSwingVec();
 
       faceDownTriggeredThisRingWindow = false;
       activeRings.clear();
@@ -1713,7 +1635,7 @@
       stopMotionListening();
       startMotionListening();
 
-      playBell(note, bellRingLeft, 1, null);
+      playBellToRingEl(note, bellRingLeft, 1, null);
     }
 
     function pickSecondNote(note) {
@@ -1722,10 +1644,10 @@
 
       setDualUI();
       showPlayScreen();
-      updateRightStack();
 
       // required each time second note is chosen
       startDualCalibration();
+      refreshTopRightButtons();
     }
 
     backBtn.addEventListener("click", () => {
@@ -1747,50 +1669,47 @@
     });
 
     removeBellBtn.addEventListener("click", () => {
-      // remove 2nd bell, return to single mode, keep current primary
-      secondNote = null;
-      dualCalibrating = false;
-      dualSwingAxis = null;
-      calibCandidateAxis = null;
-      calibAxes = [];
-
-      projSum = 0;
-      projSamples = 0;
-      lastDualSide = +1;
-
-      calibToast.classList.remove("active");
-      calibProgress.textContent = "0";
-      calibInfoPanel.classList.remove("active");
-
-      setSingleUI();
-      updateRightStack();
+      // remove second bell and return to single UI
+      resetDualMode();
+      if (currentNote) {
+        setSingleUI();
+        showPlayScreen();
+      }
     });
 
     addModeBack.addEventListener("click", () => {
+      // go back to play without changing anything
       showPlayScreen();
     });
 
-    // Calibration toast buttons
+    // Calibration info / skip gating
     calibInfoBtn.addEventListener("click", () => {
-      calibInfoPanel.classList.toggle("active");
+      alert(
+        "If you can’t swing your device, you can skip calibration.\n\n" +
+        "Without calibration, the app will still work, but the two-bell direction mapping may be less consistent."
+      );
+      skipUnlocked = true;
+      calibSkipWrap.classList.add("active");
     });
+
     calibSkipBtn.addEventListener("click", () => {
+      if (!skipUnlocked) return; // must click info first
       skipDualCalibration();
     });
 
-    // Tap-to-ring (blocked during dual calibration)
+    // Tap-to-ring
     playNoteLeft.addEventListener("click", () => {
-      if (currentNote && !(secondNote && dualCalibrating)) playBell(currentNote, bellRingLeft, 1, null);
+      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
     bellVisualLeft.addEventListener("click", () => {
-      if (currentNote && !(secondNote && dualCalibrating)) playBell(currentNote, bellRingLeft, 1, null);
+      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
 
     playNoteRight.addEventListener("click", () => {
-      if (secondNote && !dualCalibrating) playBell(secondNote, bellRingRight, 1, null);
+      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
     bellVisualRight.addEventListener("click", () => {
-      if (secondNote && !dualCalibrating) playBell(secondNote, bellRingRight, 1, null);
+      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
     function bindKeyActivate(el, fn) {
@@ -1802,10 +1721,10 @@
       });
     }
     bindKeyActivate(bellVisualLeft, () => {
-      if (currentNote && !(secondNote && dualCalibrating)) playBell(currentNote, bellRingLeft, 1, null);
+      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
     bindKeyActivate(bellVisualRight, () => {
-      if (secondNote && !dualCalibrating) playBell(secondNote, bellRingRight, 1, null);
+      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
     // Build note grid once; click behavior depends on mode
@@ -1827,7 +1746,7 @@
           // Secondary mode: disable the currently-chosen primary note (grayed out)
           if (noteSelectMode === "secondary") {
             if (!currentNote) return;
-            if (n.id === currentNote.id) return;
+            if (n.id === currentNote.id) return; // hard block
             await loadNoteBuffer(n);
             pickSecondNote(n);
             return;
@@ -1856,13 +1775,6 @@
         }
       });
     }
-
-    // Hook into showNoteScreen to apply disabled state
-    const _showNoteScreen = showNoteScreen;
-    showNoteScreen = function(mode = "primary") {
-      _showNoteScreen(mode);
-      refreshDisabledButtonsForMode();
-    };
 
     window.addEventListener("load", () => {
       const needsExplicitPermission =
