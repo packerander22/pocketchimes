@@ -171,6 +171,13 @@
       filter: brightness(0.95);
     }
 
+    .note-btn.disabled {
+      opacity: 0.45;
+      filter: grayscale(0.35);
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
     .note-help {
       margin-top: 0.8rem;
       font-size: 0.8rem;
@@ -188,6 +195,7 @@
       color: #020617;
       padding: 1.2rem;
       padding-bottom: calc(1.2rem + 110px);
+      background: #111827;
     }
 
     .play-screen.active { display: flex; }
@@ -206,7 +214,7 @@
       gap: 0.3rem;
       cursor: pointer;
       box-shadow: 0 8px 16px rgba(15, 23, 42, 0.3);
-      z-index: 40;
+      z-index: 60;
     }
 
     .back-btn:active {
@@ -214,20 +222,90 @@
       box-shadow: 0 4px 8px rgba(15, 23, 42, 0.45);
     }
 
+    .add-bell-btn {
+      position: fixed;
+      top: 0.9rem;
+      right: 0.9rem;
+      border-radius: var(--radius-full);
+      border: 1px solid rgba(15, 23, 42, 0.4);
+      background: rgba(248, 250, 252, 0.92);
+      padding: 0.35rem 0.85rem;
+      font-size: 0.8rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 8px 16px rgba(15, 23, 42, 0.3);
+      z-index: 60;
+      display: none;
+    }
+    .add-bell-btn.active { display: inline-flex; }
+    .add-bell-btn:active {
+      transform: translateY(1px) scale(0.98);
+      box-shadow: 0 4px 8px rgba(15, 23, 42, 0.45);
+    }
+
+    /* Shown only while choosing the 2nd bell, so you can go back without changing */
+    .add-mode-back {
+      position: fixed;
+      top: 0.9rem;
+      left: 0.9rem;
+      border-radius: var(--radius-full);
+      border: 1px solid rgba(15, 23, 42, 0.4);
+      background: rgba(248, 250, 252, 0.92);
+      padding: 0.35rem 0.85rem;
+      font-size: 0.8rem;
+      display: none;
+      align-items: center;
+      gap: 0.3rem;
+      cursor: pointer;
+      box-shadow: 0 8px 16px rgba(15, 23, 42, 0.3);
+      z-index: 70;
+    }
+    .add-mode-back.active { display: inline-flex; }
+    .add-mode-back:active {
+      transform: translateY(1px) scale(0.98);
+      box-shadow: 0 4px 8px rgba(15, 23, 42, 0.45);
+    }
+
+    /* --- Dual layout (only the note/bell area splits) --- */
+    .dual-area {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      gap: 0;
+      border-radius: 1.4rem;
+      overflow: hidden;
+      box-shadow: 0 14px 34px rgba(0,0,0,0.28);
+      margin-top: 0.2rem;
+      margin-bottom: 0.95rem;
+    }
+    .dual-pane {
+      flex: 1;
+      padding: 1.25rem 0.8rem 1.0rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 300px;
+    }
+    .dual-pane.hidden { display: none; }
+
     .play-note-label {
-      font-size: 3.4rem;
+      font-size: 3.2rem;
       font-weight: 800;
       letter-spacing: 0.06em;
-      margin-bottom: 1.3rem;
-      text-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
+      margin-bottom: 1.15rem;
+      text-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
       cursor: pointer;
+      user-select: none;
     }
 
     .bell-visual {
       position: relative;
       width: 150px;
       height: 150px;
-      margin-bottom: 1rem;
+      margin-bottom: 0.8rem;
       cursor: pointer;
     }
 
@@ -264,8 +342,40 @@
       max-width: 18rem;
       line-height: 1.5;
       margin-bottom: 0.8rem;
+      color: rgba(2,6,23,0.92);
+      text-shadow: 0 1px 0 rgba(255,255,255,0.22);
     }
 
+    /* --- Calibration toast --- */
+    .calib-toast {
+      position: fixed;
+      left: 50%;
+      top: 18%;
+      transform: translateX(-50%);
+      width: min(520px, 92vw);
+      background: rgba(248, 250, 252, 0.92);
+      color: rgba(2,6,23,0.92);
+      border-radius: 1.25rem;
+      border: 1px solid rgba(2,6,23,0.18);
+      box-shadow: 0 16px 42px rgba(0,0,0,0.25);
+      padding: 0.85rem 1.0rem;
+      z-index: 75;
+      display: none;
+      text-align: center;
+    }
+    .calib-toast.active { display: block; }
+    .calib-title {
+      font-weight: 1000;
+      letter-spacing: 0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .calib-sub {
+      font-size: 0.86rem;
+      opacity: 0.90;
+      line-height: 1.35;
+    }
+
+    /* --- sliders --- */
     input[type="range"]{
       -webkit-appearance: none;
       appearance: none;
@@ -428,10 +538,11 @@
 
     @media (orientation: landscape) {
       .global-logo { top: 0.6rem; width: 78px; }
-      .play-note-label { font-size: 2.7rem; margin-bottom: 0.7rem; }
+      .play-note-label { font-size: 2.6rem; margin-bottom: 0.8rem; }
       .hint-text { margin-bottom: 0.4rem; }
       .play-screen { padding-bottom: calc(1.2rem + 96px); }
       .gain-control { top: 55%; }
+      .dual-pane { min-height: 240px; }
     }
 
     @media (max-width: 400px) {
@@ -441,6 +552,7 @@
       .gain-control { left: 0.60rem; }
       .sustain-control { width: min(340px, 92vw); }
       .play-screen { padding-bottom: calc(1.2rem + 106px); }
+      .dual-pane { min-height: 280px; }
     }
   </style>
 </head>
@@ -459,14 +571,17 @@
     </div>
   </div>
 
+  <!-- Only shown during "Add Bell" selection so it still looks like the same note screen -->
+  <button class="add-mode-back" id="add-mode-back" type="button">← Back</button>
+
   <div class="app" id="note-screen" style="display:none;" role="main">
     <div class="note-card">
-      <div class="note-title">Choose your note</div>
-      <div class="note-subtitle">
+      <div class="note-title" id="note-title">Choose your note</div>
+      <div class="note-subtitle" id="note-subtitle">
         Full chromatic C5–B7 (top note B7). Each note uses the bell color palette.
       </div>
       <div class="note-grid" id="note-grid"></div>
-      <div class="note-help">Swing to ring. You’ll see your note and bell on the next screen.</div>
+      <div class="note-help" id="note-help">Swing to ring. You’ll see your note and bell on the next screen.</div>
     </div>
   </div>
 
@@ -510,18 +625,34 @@
 
   <div class="play-screen" id="play-screen" role="main">
     <button class="back-btn" id="back-btn" type="button">← Notes</button>
+    <button class="add-bell-btn" id="add-bell-btn" type="button">Add Bell</button>
 
-    <div class="play-note-label" id="play-note-label">C5</div>
+    <div class="calib-toast" id="calib-toast" aria-live="polite">
+      <div class="calib-title">Calibrate forward ring</div>
+      <div class="calib-sub">
+        Ring the phone <b>away from you</b> 3 times. (Hold it the same way you’ll play.)
+        <br/>Progress: <span id="calib-progress">0</span>/3
+      </div>
+    </div>
 
-    <div
-      class="bell-visual"
-      id="bell-visual"
-      role="button"
-      aria-label="Tap to ring the bell"
-      tabindex="0"
-    >
-      <div class="bell-ring" id="bell-ring"></div>
-      <div class="bell-clapper"></div>
+    <div class="dual-area" id="dual-area" aria-label="Bell area">
+      <div class="dual-pane" id="pane-left">
+        <div class="play-note-label" id="play-note-label-left">C5</div>
+
+        <div class="bell-visual" id="bell-visual-left" role="button" aria-label="Tap to ring left bell" tabindex="0">
+          <div class="bell-ring" id="bell-ring-left"></div>
+          <div class="bell-clapper"></div>
+        </div>
+      </div>
+
+      <div class="dual-pane hidden" id="pane-right">
+        <div class="play-note-label" id="play-note-label-right">D5</div>
+
+        <div class="bell-visual" id="bell-visual-right" role="button" aria-label="Tap to ring right bell" tabindex="0">
+          <div class="bell-ring" id="bell-ring-right"></div>
+          <div class="bell-clapper"></div>
+        </div>
+      </div>
     </div>
 
     <div class="hint-text">
@@ -601,9 +732,27 @@
     const startBtn      = document.getElementById("start-btn");
     const noteGrid      = document.getElementById("note-grid");
     const backBtn       = document.getElementById("back-btn");
-    const playNoteLabel = document.getElementById("play-note-label");
-    const bellRing      = document.getElementById("bell-ring");
-    const bellVisual    = document.getElementById("bell-visual");
+
+    const noteTitleEl   = document.getElementById("note-title");
+    const noteSubEl     = document.getElementById("note-subtitle");
+    const noteHelpEl    = document.getElementById("note-help");
+
+    const addBellBtn    = document.getElementById("add-bell-btn");
+    const addModeBack   = document.getElementById("add-mode-back");
+
+    const paneRight     = document.getElementById("pane-right");
+
+    const playNoteLeft  = document.getElementById("play-note-label-left");
+    const playNoteRight = document.getElementById("play-note-label-right");
+
+    const bellRingLeft  = document.getElementById("bell-ring-left");
+    const bellRingRight = document.getElementById("bell-ring-right");
+
+    const bellVisualLeft  = document.getElementById("bell-visual-left");
+    const bellVisualRight = document.getElementById("bell-visual-right");
+
+    const calibToast    = document.getElementById("calib-toast");
+    const calibProgress = document.getElementById("calib-progress");
 
     const gainWrapper    = document.getElementById("gain-wrapper");
     const gainSlider     = document.getElementById("gain-slider");
@@ -665,7 +814,6 @@
       return p;
     }
 
-    // ✅ Progressive preload (prevents CPU spikes from decoding 36 WAVs at once)
     function preloadAllNotes() {
       if (preloadAllNotesPromise) return preloadAllNotesPromise;
 
@@ -679,8 +827,6 @@
           while (active < CONCURRENCY && idx < NOTES.length) {
             const n = NOTES[idx++];
             active++;
-
-            // yield a bit between starts
             setTimeout(async () => {
               try { await loadNoteBuffer(n); } catch(e) {}
               active--;
@@ -696,20 +842,18 @@
       return preloadAllNotesPromise;
     }
 
-    // Preload on intent (iOS speed fix)
     function preloadNoteOnIntent(btn, note) {
       let started = false;
       const start = () => {
         if (started) return;
         started = true;
-        loadNoteBuffer(note); // fire & forget
+        loadNoteBuffer(note);
       };
       btn.addEventListener("touchstart", start, { passive: true });
       btn.addEventListener("mousedown", start);
       btn.addEventListener("pointerdown", start);
     }
 
-    // Headphone warning
     let headphoneWarningShown = false;
     function showHeadphoneWarningOnce() {
       if (headphoneWarningShown) return;
@@ -737,7 +881,7 @@
     // ---- DAMPING-BASED SUSTAIN ----
     function dampingTimeConstantFromSlider(val) {
       const v = Math.max(1, Math.min(10, val));
-      const t = (v - 1) / 9; // 0..1
+      const t = (v - 1) / 9;
       const tcMin = 0.12;
       const tcMax = 4.2;
       return tcMin * Math.pow(tcMax / tcMin, t);
@@ -746,7 +890,6 @@
     function applyDampingEnvelope(gainNode, now, sustainVal, peakGain) {
       const start = Math.max(peakGain, 0.0003);
       const floor = 0.00001;
-
       const tc = dampingTimeConstantFromSlider(sustainVal);
 
       try {
@@ -763,13 +906,16 @@
       return { floor, tc };
     }
 
-    // ---- FACE-DOWN MUTE + FACE-UP CALIBRATION ----
+    // ---- FACE-DOWN MUTE + CALIBRATION ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
 
     const FACE_DOWN_MAX_TILT_DEG = 30;
-    const STILL_ACCEL_MAX = 0.90;
     const GRAVITY_MIN_MAG = 7.0;
+
+    // ✅ requested lockout
+    const TURN_MUTE_LOCKOUT_MS = 200;
+    let lastBellPlayMs = 0;
 
     let faceDownZSign = null;
     let calibSamples = [];
@@ -810,9 +956,8 @@
       lastCalibG = { x: gx, y: gy, z: gz, mag: gmag };
 
       if (performance.now() > calibUntilMs) {
-        // we’ll finalize externally too, but this keeps original behavior
         if (calibSamples.length >= 1) lockCalibrationFromSamples();
-        else finalizeCalibrationNow(); // fallback to last gravity
+        else finalizeCalibrationNow();
         return;
       }
 
@@ -846,7 +991,6 @@
       calibLocked = true;
     }
 
-    // ✅ finalize immediately when user picks a note (use whatever we have)
     function finalizeCalibrationNow() {
       if (calibLocked) return;
 
@@ -863,7 +1007,25 @@
           calibLocked = true;
         }
       }
-      // If still not locked, face-down mute simply won't trigger until reload.
+    }
+
+    function isFaceUp(event) {
+      if (!faceDownZSign) return false;
+      const g = event.accelerationIncludingGravity;
+      if (!g || g.x == null || g.y == null || g.z == null) return false;
+
+      const gx = g.x || 0, gy = g.y || 0, gz = g.z || 0;
+      const gmag = Math.sqrt(gx*gx + gy*gy + gz*gz);
+      if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return false;
+
+      const gzNorm = (gz || 0) * faceDownZSign;
+      if (Math.abs(gzNorm) < 0.55 * gmag) return false;
+
+      const maxTiltRad = (FACE_DOWN_MAX_TILT_DEG * Math.PI) / 180;
+      const cosThreshold = Math.cos(maxTiltRad);
+      const cosToDown = gzNorm / gmag;
+
+      return (cosToDown <= -cosThreshold);
     }
 
     function checkFaceDownOnly(event) {
@@ -871,6 +1033,9 @@
         faceDownTriggeredThisRingWindow = false;
         return;
       }
+
+      // ✅ requested: prevent within 200ms of ring
+      if (performance.now() - lastBellPlayMs < TURN_MUTE_LOCKOUT_MS) return;
 
       if (faceDownTriggeredThisRingWindow) return;
       if (inSwing) return;
@@ -927,7 +1092,7 @@
       });
     }
 
-    // ---- ONE-TIME CALIBRATION LISTENER (permission -> note press) ----
+    // ---- ONE-TIME CALIBRATION LISTENER ----
     let calibrationListening = false;
     let calibrationCompleted = false;
 
@@ -959,8 +1124,103 @@
       }
     }
 
+    // ---- Dual-bell state + calibration (forward vs opposite) ----
+    let currentNote = null;         // primary (left)
+    let secondNote = null;          // secondary (right)
+
+    let dualCalibrating = false;
+    let dualCalibCount = 0;
+    let dualForwardVec = null;      // normalized jerk vector for "away from you"
+
+    function resetDualMode() {
+      secondNote = null;
+      dualCalibrating = false;
+      dualCalibCount = 0;
+      dualForwardVec = null;
+      calibToast.classList.remove("active");
+      calibProgress.textContent = "0";
+      setSingleUI();
+    }
+
+    function startDualCalibration() {
+      dualCalibrating = true;
+      dualCalibCount = 0;
+      dualForwardVec = { x: 0, y: 0, z: 0 };
+      calibProgress.textContent = "0";
+      calibToast.classList.add("active");
+    }
+
+    function finishDualCalibration() {
+      const v = dualForwardVec;
+      const mag = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+      if (!isFinite(mag) || mag < 0.001) {
+        dualForwardVec = { x: 1, y: 0, z: 0 };
+      } else {
+        dualForwardVec = { x: v.x / mag, y: v.y / mag, z: v.z / mag };
+      }
+      dualCalibrating = false;
+      calibToast.classList.remove("active");
+    }
+
+    function setSingleUI() {
+      paneRight.classList.add("hidden");
+      playScreen.style.background = currentNote ? currentNote.color : "#111827";
+    }
+
+    function setDualUI() {
+      paneRight.classList.remove("hidden");
+      playScreen.style.background =
+        `linear-gradient(90deg, ${currentNote.color} 0%, ${currentNote.color} 50%, ${secondNote.color} 50%, ${secondNote.color} 100%)`;
+    }
+
+    // ---- Add-bell mode uses the SAME note screen ----
+    let noteSelectMode = "primary"; // "primary" or "secondary"
+
+    function setNoteScreenTextForMode(mode) {
+      // keep the same UI; only these strings change (still looks identical structurally)
+      if (mode === "secondary") {
+        noteTitleEl.textContent = "Choose your note";
+        noteSubEl.textContent = "Pick a second bell note. Your current note is disabled.";
+        noteHelpEl.textContent = "Tap any other note to add it as the second bell.";
+      } else {
+        noteTitleEl.textContent = "Choose your note";
+        noteSubEl.textContent = "Full chromatic C5–B7 (top note B7). Each note uses the bell color palette.";
+        noteHelpEl.textContent = "Swing to ring. You’ll see your note and bell on the next screen.";
+      }
+    }
+
+    function showNoteScreen(mode = "primary") {
+      noteSelectMode = mode;
+      setNoteScreenTextForMode(mode);
+
+      motionScreen.style.display = "none";
+      playScreen.classList.remove("active");
+      noteScreen.style.display = "block";
+
+      // Sliders should not duplicate / shouldn’t be used on the menu
+      gainWrapper.classList.remove("active");
+      sustainWrapper.classList.remove("active");
+
+      // show the special back button only for add-bell selection
+      addModeBack.classList.toggle("active", mode === "secondary");
+    }
+
+    function showPlayScreen() {
+      noteScreen.style.display = "none";
+      playScreen.classList.add("active");
+
+      gainWrapper.classList.add("active");
+      sustainWrapper.classList.add("active");
+
+      addBellBtn.classList.add("active");
+      addModeBack.classList.remove("active");
+
+      if (currentNote && secondNote) setDualUI();
+      else if (currentNote) setSingleUI();
+    }
+
     // ---- Play bell sample ----
-    async function playBell(note, intensity = 1, visualDir = null) {
+    async function playBellToRingEl(note, ringEl, intensity = 1, visualDir = null) {
       if (!note) return;
 
       ensureAudioCtx();
@@ -1005,6 +1265,10 @@
       src.start(now);
       src.stop(now + safeDuration);
 
+      // ✅ mark last bell play time for turn-to-mute lockout
+      lastBellPlayMs = performance.now();
+
+      // visuals
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
@@ -1019,12 +1283,13 @@
       else if (dir === "down") transform = `translate(0px, ${offset}px) rotate(0deg)`;
       else transform = `translate(0px, 0px) rotate(${(Math.random() < 0.5 ? -1 : 1) * offset}deg)`;
 
-      bellRing.style.transform = transform;
-      setTimeout(() => { bellRing.style.transform = "translate(0px, 0px) rotate(0deg)"; }, 180);
+      if (ringEl) {
+        ringEl.style.transform = transform;
+        setTimeout(() => { ringEl.style.transform = "translate(0px, 0px) rotate(0deg)"; }, 180);
+      }
     }
 
     // ---- MOTION HANDLING ----
-    let currentNote = null;
     let lastRingTime = 0;
 
     const MIN_INTERVAL   = 200;
@@ -1047,6 +1312,8 @@
       if (maxComp === absY) return jy > 0 ? "up" : "down";
       return jz > 0 ? "up" : "down";
     }
+
+    function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
 
     function handleMotion(event) {
       if (!currentNote) return;
@@ -1093,7 +1360,32 @@
           const visualDir = computeVisualDirFromJerk(jx, jy, jz);
 
           ensureWakeLock();
-          playBell(currentNote, intensity, visualDir);
+
+          if (secondNote) {
+            if (isFaceUp(event)) {
+              playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+              playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+            } else {
+              if (dualCalibrating) {
+                dualForwardVec.x += jx;
+                dualForwardVec.y += jy;
+                dualForwardVec.z += jz;
+
+                dualCalibCount++;
+                calibProgress.textContent = String(dualCalibCount);
+
+                if (dualCalibCount >= 3) finishDualCalibration();
+              } else {
+                const jerkV = { x: jx, y: jy, z: jz };
+                const s = dualForwardVec ? dot(jerkV, dualForwardVec) : 1;
+
+                if (s >= 0) playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+                else playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+              }
+            }
+          } else {
+            playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+          }
         }
       }
 
@@ -1146,54 +1438,80 @@
         return;
       }
 
-      // ✅ Start calibration ASAP after permission (once per load)
       startCalibrationListeningOnce();
 
-      // ✅ progressive preload after user gesture (safer on iOS)
       preloadAllNotesPromise = null;
       preloadAllNotes();
 
       motionScreen.style.display = "none";
-      noteScreen.style.display   = "block";
+      showNoteScreen("primary");
       showHeadphoneWarningOnce();
     });
 
-    function showPlayScreen(note) {
+    function pickPrimaryNote(note) {
+      // selecting primary note always resets dual mode
       currentNote = note;
-      playNoteLabel.textContent = note.label;
+      resetDualMode();
+
+      playNoteLeft.textContent = note.label;
       playScreen.style.background = note.color;
 
-      noteScreen.style.display = "none";
-      playScreen.classList.add("active");
-
-      gainWrapper.classList.add("active");
-      sustainWrapper.classList.add("active");
-
+      showPlayScreen();
+      stopMotionListening();
       startMotionListening();
+
+      playBellToRingEl(note, bellRingLeft, 1, null);
     }
 
-    function showNoteScreen() {
+    function pickSecondNote(note) {
+      secondNote = note;
+      playNoteRight.textContent = note.label;
+
+      setDualUI();
+      showPlayScreen();
+
+      // required each time second note is chosen
+      startDualCalibration();
+    }
+
+    backBtn.addEventListener("click", () => {
       currentNote = null;
+      resetDualMode();
       stopMotionListening();
       playScreen.classList.remove("active");
-      noteScreen.style.display = "block";
-
-      gainWrapper.classList.remove("active");
-      sustainWrapper.classList.remove("active");
-    }
-
-    backBtn.addEventListener("click", showNoteScreen);
-
-    playNoteLabel.addEventListener("click", () => { if (currentNote) playBell(currentNote, 1, null); });
-    bellVisual.addEventListener("click", () => { if (currentNote) playBell(currentNote, 1, null); });
-
-    bellVisual.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        if (currentNote) playBell(currentNote, 1, null);
-      }
+      addBellBtn.classList.remove("active");
+      showNoteScreen("primary");
     });
 
+    addBellBtn.addEventListener("click", () => {
+      if (!currentNote) return;
+      showNoteScreen("secondary");
+    });
+
+    addModeBack.addEventListener("click", () => {
+      // go back to play without changing anything
+      showPlayScreen();
+    });
+
+    // Tap-to-ring
+    playNoteLeft.addEventListener("click", () => { if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null); });
+    bellVisualLeft.addEventListener("click", () => { if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null); });
+
+    playNoteRight.addEventListener("click", () => { if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null); });
+    bellVisualRight.addEventListener("click", () => { if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null); });
+
+    function bindKeyActivate(el, fn) {
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          fn();
+        }
+      });
+    }
+    bindKeyActivate(bellVisualLeft, () => { if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null); });
+    bindKeyActivate(bellVisualRight, () => { if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null); });
+
+    // Build note grid once; click behavior depends on mode
     function initNoteButtons() {
       NOTES.forEach((n) => {
         const btn = document.createElement("button");
@@ -1207,33 +1525,60 @@
         btn.addEventListener("click", async () => {
           await resumeAudioCtx();
 
-          // ✅ Freeze calibration when user commits to a note (do not restart unless reload)
           if (!calibrationCompleted) stopCalibrationListening(true);
 
+          // Secondary mode: disable the currently-chosen primary note (grayed out)
+          if (noteSelectMode === "secondary") {
+            if (!currentNote) return;
+            if (n.id === currentNote.id) return; // hard block
+            await loadNoteBuffer(n);
+            pickSecondNote(n);
+            return;
+          }
+
+          // Primary mode: select new primary (this resets to single bell)
           await loadNoteBuffer(n);
-          showPlayScreen(n);
-          playBell(n, 1, null);
+          pickPrimaryNote(n);
         });
 
+        // we’ll toggle disabled styling dynamically
+        btn.dataset.noteId = n.id;
         noteGrid.appendChild(btn);
       });
     }
     initNoteButtons();
+
+    function refreshDisabledButtonsForMode() {
+      const buttons = noteGrid.querySelectorAll("button.note-btn");
+      buttons.forEach((btn) => {
+        btn.classList.remove("disabled");
+        btn.disabled = false;
+
+        if (noteSelectMode === "secondary" && currentNote && btn.dataset.noteId === currentNote.id) {
+          btn.classList.add("disabled");
+          btn.disabled = true;
+        }
+      });
+    }
+
+    // Hook into showNoteScreen to apply disabled state
+    const _showNoteScreen = showNoteScreen;
+    showNoteScreen = function(mode = "primary") {
+      _showNoteScreen(mode);
+      refreshDisabledButtonsForMode();
+    };
 
     window.addEventListener("load", () => {
       const needsExplicitPermission =
         typeof DeviceMotionEvent !== "undefined" &&
         typeof DeviceMotionEvent.requestPermission === "function";
 
-      // prefetch is okay, but decode still best after gesture
       preloadAllNotes();
 
       if (!needsExplicitPermission) {
         motionScreen.style.display = "none";
-        noteScreen.style.display   = "block";
+        showNoteScreen("primary");
         showHeadphoneWarningOnce();
-
-        // no-permission devices: start calibration immediately
         startCalibrationListeningOnce();
       }
     });
