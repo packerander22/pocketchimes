@@ -1327,6 +1327,8 @@
     let lastMagnitude = null;
     let lastDelta = 0;
     let lastAx = null, lastAy = null, lastAz = null;
+    let buildPeak = 0; // tracks peak |delta| during the build-up phase before the strike
+
 
     function computeVisualDirFromJerk(jx, jy, jz) {
       const absX = Math.abs(jx), absY = Math.abs(jy), absZ = Math.abs(jz);
@@ -1348,61 +1350,92 @@
 
     function handleMotion(event) {
       if (!currentNote) return;
-
+    
       const nowMs = performance.now();
-
+    
       updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
-
+    
       let acc = event.acceleration;
       if (!acc || (acc.x === null && acc.y === null && acc.z === null)) {
         acc = event.accelerationIncludingGravity;
       }
       if (!acc) return;
-
+    
       const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
       const magnitude = Math.sqrt(ax*ax + ay*ay + az*az);
-
+    
       if (lastMagnitude === null || lastAx === null) {
         lastMagnitude = magnitude;
         lastAx = ax; lastAy = ay; lastAz = az;
         return;
       }
-
+    
       const jx = ax - lastAx, jy = ay - lastAy, jz = az - lastAz;
-
+    
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
-
-      if (absDelta < RESET_DELTA) inSwing = false;
-
+    
+      // --- tuneables for the new behavior ---
+      // You said you want min threshold at 5.
+      // Keep DELTA_RING_MIN = 5.0 in your constants.
+      const BUILD_MIN_FOR_JERK_RING = DELTA_RING_MIN; // require "real swing" before jerk-only strike
+      const DECEL_RING_MIN = Math.min(DELTA_RING_MAX, DELTA_RING_MIN + 1.5); // fast stop threshold (~6.5 if min=5)
+      const JERK_RING_MIN = 0.85; // minimum jerk magnitude (normalized m) to consider direction meaningful
+    
+      // If we're below reset threshold, swing is inactive
+      if (absDelta < RESET_DELTA) {
+        inSwing = false;
+        buildPeak = 0;
+      }
+    
+      // Track "build-up" energy (peak delta) while building, before a strike
+      // Building = delta positive and meaningfully above reset threshold
+      if (!inSwing && signedDelta > RESET_DELTA) {
+        buildPeak = Math.max(buildPeak, absDelta);
+      }
+    
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
+    
       const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
       const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
       const justReversed = wasBuilding && changedDirection;
-
-      if (!inSwing && justReversed && nowMs - lastRingTime > MIN_INTERVAL) {
-        const peak = Math.abs(lastDelta);
+    
+      // New: "fast stop" = strong negative delta this frame
+      const fastDecel = (signedDelta < 0 && absDelta >= DECEL_RING_MIN);
+    
+      // New: jerk trigger — only valid if build was big enough OR fast decel happened
+      // We use opposite jerk for direction consistency with your current approach
+      const oppJerk = { x: -jx, y: -jy, z: -jz };
+      const jN = norm(oppJerk);
+      const jerkStrongEnough = jN.m >= JERK_RING_MIN;
+      const jerkEligible = jerkStrongEnough && (buildPeak >= BUILD_MIN_FOR_JERK_RING || fastDecel);
+    
+      // Final trigger condition:
+      // - either classic reversal strike (what you already had),
+      // - or jerk strike (with safeguards)
+      const shouldTrigger = (justReversed || jerkEligible);
+    
+      if (!inSwing && shouldTrigger && nowMs - lastRingTime > MIN_INTERVAL) {
+        // Peak for intensity: use the stronger of (last build delta) and (current decel delta)
+        // so jerk-only strikes still get a sensible intensity.
+        const peak = Math.max(Math.abs(lastDelta), absDelta);
+    
         if (peak >= DELTA_RING_MIN) {
           inSwing = true;
           lastRingTime = nowMs;
-
+    
           const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
           const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
           const visualDir = computeVisualDirFromJerk(jx, jy, jz);
-
+    
           ensureWakeLock();
-
+    
           const faceUpNow = isFaceUpLatched(nowMs);
-
-          // Jerk-only direction for bell selection:
-          // use opposite jerk (often aligns with "where swing was going")
-          const oppJerk = { x: -jx, y: -jy, z: -jz };
-          const jN = norm(oppJerk);
-
-          // Small jerk improvement: ignore weak/ambiguous jerk direction and fall back to last known mapping
-          const JERK_DIR_MIN = 0.35; // tune if needed
+    
+          // Small jerk improvement: ignore weak/ambiguous jerk direction and fall back
+          const JERK_DIR_MIN = 0.35; // your existing value
           let dir;
           if (jN.m < JERK_DIR_MIN && dualForwardVec) {
             dir = dualForwardVec;
@@ -1411,10 +1444,10 @@
           } else {
             dir = dualForwardVec || { x: 1, y: 0, z: 0 };
           }
-
+    
           if (secondNote) {
             if (faceUpNow) {
-              // face-up ALWAYS rings both
+              // face-up ALWAYS rings both, but not while calibrating
               if (!dualCalibrating) {
                 playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
                 playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
@@ -1433,9 +1466,9 @@
                     dualCalibCount = 1;
                   }
                 }
-
+    
                 calibProgress.textContent = String(dualCalibCount);
-
+    
                 if (dualCalibCount >= 3) {
                   const nf = norm(dualForwardVec);
                   dualForwardVec = (nf.m > 0) ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
@@ -1444,7 +1477,7 @@
               } else {
                 const f = dualForwardVec ? dualForwardVec : { x: 1, y: 0, z: 0 };
                 const s = dot(dir, f);
-
+    
                 if (s >= 0) playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
                 else playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
               }
@@ -1452,9 +1485,12 @@
           } else {
             playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
           }
+    
+          // reset build tracking after a strike
+          buildPeak = 0;
         }
       }
-
+    
       lastMagnitude = magnitude;
       lastDelta = signedDelta;
       lastAx = ax; lastAy = ay; lastAz = az;
