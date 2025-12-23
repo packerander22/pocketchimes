@@ -672,6 +672,18 @@
       if (!wakeLock) requestWakeLock();
     }
 
+    // ----- HAPTICS -----
+    // "Biggest you can" on the web is basically duration/pattern via Vibration API (Android).
+    // iOS Safari often ignores navigator.vibrate; this safely no-ops there.
+    function triggerBigHaptic() {
+      try {
+        if (navigator.vibrate) {
+          // Strong “bump” pattern (feels bigger than a single short buzz on many devices)
+          navigator.vibrate([0, 35, 20, 70]);
+        }
+      } catch (e) {}
+    }
+
     // ----- NOTE DEFINITIONS -----
     const PITCHES = [
       { name: "C",  color: "#FF3B30" },
@@ -1245,9 +1257,6 @@
 
     // ---- Play bell sample ----
     async function playBellToRingEl(note, ringEl, intensity = 1, visualDir = null) {
-      // NEW: hard gate — no playing while add-bell calibration toast is visible
-      if (dualCalibrating) return;
-
       if (!note) return;
 
       ensureAudioCtx();
@@ -1289,6 +1298,9 @@
       const endNudgeAt = Math.max(now, now + safeDuration - tailPad);
       try { gain.gain.setTargetAtTime(floor, endNudgeAt, 0.015); } catch (e) {}
 
+      // BIG haptic bump exactly when the bell rings
+      triggerBigHaptic();
+
       src.start(now);
       src.stop(now + safeDuration);
 
@@ -1319,16 +1331,23 @@
     let lastRingTime = 0;
 
     const MIN_INTERVAL   = 200;
-    const DELTA_RING_MIN = 5.0;   // CHANGED: was 3.0, now 5.0 (applies everywhere, incl calibration)
+    const DELTA_RING_MIN = 5.0;   // <-- raised min threshold (applies to normal + calibration strikes)
     const DELTA_RING_MAX = 10.0;
     const RESET_DELTA    = 1.5;
+
+    // Build-up arming gate (prevents “starting from still” false strikes)
+    const BUILD_MIN_MS = 100;
+    const BUILD_MIN_FRAMES = 4;
 
     let inSwing = false;
     let lastMagnitude = null;
     let lastDelta = 0;
     let lastAx = null, lastAy = null, lastAz = null;
-    let buildPeak = 0; // tracks peak |delta| during the build-up phase before the strike
 
+    // build-up tracking
+    let buildPeak = 0;
+    let buildStartMs = 0;
+    let buildFrames = 0;
 
     function computeVisualDirFromJerk(jx, jy, jz) {
       const absX = Math.abs(jx), absY = Math.abs(jy), absZ = Math.abs(jz);
@@ -1348,94 +1367,86 @@
       return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
 
+    function resetBuild() {
+      buildPeak = 0;
+      buildStartMs = 0;
+      buildFrames = 0;
+    }
+
     function handleMotion(event) {
       if (!currentNote) return;
-    
+
       const nowMs = performance.now();
-    
+
       updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
-    
+
       let acc = event.acceleration;
       if (!acc || (acc.x === null && acc.y === null && acc.z === null)) {
         acc = event.accelerationIncludingGravity;
       }
       if (!acc) return;
-    
+
       const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
       const magnitude = Math.sqrt(ax*ax + ay*ay + az*az);
-    
+
       if (lastMagnitude === null || lastAx === null) {
         lastMagnitude = magnitude;
         lastAx = ax; lastAy = ay; lastAz = az;
         return;
       }
-    
+
       const jx = ax - lastAx, jy = ay - lastAy, jz = az - lastAz;
-    
+
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
-    
-      // --- tuneables for the new behavior ---
-      // You said you want min threshold at 5.
-      // Keep DELTA_RING_MIN = 5.0 in your constants.
-      const BUILD_MIN_FOR_JERK_RING = DELTA_RING_MIN; // require "real swing" before jerk-only strike
-      const DECEL_RING_MIN = Math.min(DELTA_RING_MAX, DELTA_RING_MIN + 1.5); // fast stop threshold (~6.5 if min=5)
-      const JERK_RING_MIN = 0.85; // minimum jerk magnitude (normalized m) to consider direction meaningful
-    
-      // If we're below reset threshold, swing is inactive
-      if (absDelta < RESET_DELTA) {
-        inSwing = false;
-        buildPeak = 0;
-      }
-    
-      // Track "build-up" energy (peak delta) while building, before a strike
-      // Building = delta positive and meaningfully above reset threshold
+
+      // --- Build-up tracking (100ms arming gate) ---
+      // Only count "build" while magnitude is increasing meaningfully.
       if (!inSwing && signedDelta > RESET_DELTA) {
+        if (buildFrames === 0) buildStartMs = nowMs;
+        buildFrames++;
         buildPeak = Math.max(buildPeak, absDelta);
+      } else if (absDelta < RESET_DELTA) {
+        // fully idle again → reset build window
+        resetBuild();
       }
-    
+
+      const armed =
+        buildFrames >= BUILD_MIN_FRAMES &&
+        buildStartMs > 0 &&
+        (nowMs - buildStartMs) >= BUILD_MIN_MS &&
+        buildPeak >= DELTA_RING_MIN;
+
+      if (absDelta < RESET_DELTA) inSwing = false;
+
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
-    
       const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
       const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
       const justReversed = wasBuilding && changedDirection;
-    
-      // New: "fast stop" = strong negative delta this frame
-      const fastDecel = (signedDelta < 0 && absDelta >= DECEL_RING_MIN);
-    
-      // New: jerk trigger — only valid if build was big enough OR fast decel happened
-      // We use opposite jerk for direction consistency with your current approach
-      const oppJerk = { x: -jx, y: -jy, z: -jz };
-      const jN = norm(oppJerk);
-      const jerkStrongEnough = jN.m >= JERK_RING_MIN;
-      const jerkEligible = jerkStrongEnough && (buildPeak >= BUILD_MIN_FOR_JERK_RING || fastDecel);
-    
-      // Final trigger condition:
-      // - either classic reversal strike (what you already had),
-      // - or jerk strike (with safeguards)
-      const shouldTrigger = (justReversed || jerkEligible);
-    
-      if (!inSwing && shouldTrigger && nowMs - lastRingTime > MIN_INTERVAL) {
-        // Peak for intensity: use the stronger of (last build delta) and (current decel delta)
-        // so jerk-only strikes still get a sensible intensity.
-        const peak = Math.max(Math.abs(lastDelta), absDelta);
-    
+
+      // Gate ALL strikes behind "armed" to stop false rings from stationary starts.
+      if (armed && !inSwing && justReversed && nowMs - lastRingTime > MIN_INTERVAL) {
+        const peak = Math.abs(lastDelta);
         if (peak >= DELTA_RING_MIN) {
           inSwing = true;
           lastRingTime = nowMs;
-    
+
           const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
           const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
           const visualDir = computeVisualDirFromJerk(jx, jy, jz);
-    
+
           ensureWakeLock();
-    
+
           const faceUpNow = isFaceUpLatched(nowMs);
-    
-          // Small jerk improvement: ignore weak/ambiguous jerk direction and fall back
-          const JERK_DIR_MIN = 0.35; // your existing value
+
+          // Jerk-only direction for bell selection:
+          const oppJerk = { x: -jx, y: -jy, z: -jz };
+          const jN = norm(oppJerk);
+
+          // Small jerk improvement: ignore weak/ambiguous jerk direction and fall back to last known mapping
+          const JERK_DIR_MIN = 0.35; // tune if needed
           let dir;
           if (jN.m < JERK_DIR_MIN && dualForwardVec) {
             dir = dualForwardVec;
@@ -1444,10 +1455,10 @@
           } else {
             dir = dualForwardVec || { x: 1, y: 0, z: 0 };
           }
-    
+
           if (secondNote) {
             if (faceUpNow) {
-              // face-up ALWAYS rings both, but not while calibrating
+              // face-up ALWAYS rings both
               if (!dualCalibrating) {
                 playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
                 playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
@@ -1466,9 +1477,9 @@
                     dualCalibCount = 1;
                   }
                 }
-    
+
                 calibProgress.textContent = String(dualCalibCount);
-    
+
                 if (dualCalibCount >= 3) {
                   const nf = norm(dualForwardVec);
                   dualForwardVec = (nf.m > 0) ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
@@ -1477,7 +1488,7 @@
               } else {
                 const f = dualForwardVec ? dualForwardVec : { x: 1, y: 0, z: 0 };
                 const s = dot(dir, f);
-    
+
                 if (s >= 0) playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
                 else playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
               }
@@ -1485,12 +1496,12 @@
           } else {
             playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
           }
-    
-          // reset build tracking after a strike
-          buildPeak = 0;
+
+          // Reset build window after a successful strike so the next ring must “earn” it again.
+          resetBuild();
         }
       }
-    
+
       lastMagnitude = magnitude;
       lastDelta = signedDelta;
       lastAx = ax; lastAy = ay; lastAz = az;
@@ -1501,6 +1512,7 @@
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
+      resetBuild();
       window.addEventListener("devicemotion", handleMotion);
     }
 
@@ -1510,6 +1522,7 @@
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
+      resetBuild();
 
       faceDownTriggeredThisRingWindow = false;
       activeRings.clear();
@@ -1619,19 +1632,19 @@
       skipDualCalibration();
     });
 
-    // Tap-to-ring
+    // Tap-to-ring (still blocked during dualCalibrating)
     playNoteLeft.addEventListener("click", () => {
-      if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
+      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
     bellVisualLeft.addEventListener("click", () => {
-      if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
+      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
 
     playNoteRight.addEventListener("click", () => {
-      if (secondNote) playBellToRingEl(secondNote, bellRingRight, 1, null);
+      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
     bellVisualRight.addEventListener("click", () => {
-      if (secondNote) playBellToRingEl(secondNote, bellRingRight, 1, null);
+      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
     function bindKeyActivate(el, fn) {
@@ -1643,10 +1656,10 @@
       });
     }
     bindKeyActivate(bellVisualLeft, () => {
-      if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
+      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
     bindKeyActivate(bellVisualRight, () => {
-      if (secondNote) playBellToRingEl(secondNote, bellRingRight, 1, null);
+      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
     // Build note grid once; click behavior depends on mode
