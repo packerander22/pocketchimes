@@ -200,7 +200,6 @@
 
     .play-screen.active { display: flex; }
 
-    /* Shared top button style */
     .top-btn {
       position: fixed;
       top: 0.9rem;
@@ -249,7 +248,6 @@
       min-width: 0;
     }
 
-    /* --- Dual layout (remove the "tile" look) --- */
     .dual-area {
       width: 100%;
       max-width: 520px;
@@ -341,7 +339,6 @@
       text-shadow: 0 1px 0 rgba(255,255,255,0.22);
     }
 
-    /* --- Calibration toast --- */
     .calib-toast {
       position: fixed;
       left: 50%;
@@ -416,7 +413,6 @@
     }
     .calib-skip-btn:active { transform: translateY(1px) scale(0.98); }
 
-    /* --- sliders --- */
     input[type="range"]{
       -webkit-appearance: none;
       appearance: none;
@@ -884,7 +880,7 @@
       return { floor, tc };
     }
 
-    // ---- FACE-DOWN MUTE + FACE-UP LATCH CALIBRATION ----
+    // ---- FACE-DOWN MUTE + CALIBRATION ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
 
@@ -906,7 +902,6 @@
     const CALIB_NEAR_FLAT_COS = Math.cos((55 * Math.PI) / 180);
     const CALIB_GRAV_DELTA_MAX = 0.30;
 
-    // Face-up latch (smooths big-swing misreads)
     let faceUpLatchedUntilMs = 0;
     const FACEUP_LATCH_HOLD_MS = 320;
     const FACEUP_ENTER_COS = -0.82;
@@ -1080,7 +1075,7 @@
       });
     }
 
-    // ---- ONE-TIME FACE-UP CALIBRATION LISTENER ----
+    // ---- ONE-TIME CALIBRATION LISTENER ----
     let calibrationListening = false;
     let calibrationCompleted = false;
 
@@ -1119,8 +1114,8 @@
     let dualCalibrating = false;
     let dualCalibCount = 0;
 
-    // For gyro-based direction: "Away From You" is represented as a SIGN (+1 or -1)
-    let dualForwardSign = null;
+    // normalized direction for "Away From You"
+    let dualForwardVec = null;
 
     // Skip gating: user must click Info first
     let skipUnlocked = false;
@@ -1129,7 +1124,7 @@
       secondNote = null;
       dualCalibrating = false;
       dualCalibCount = 0;
-      dualForwardSign = null;
+      dualForwardVec = null;
       skipUnlocked = false;
 
       calibToast.classList.remove("active");
@@ -1143,7 +1138,7 @@
     function startDualCalibration() {
       dualCalibrating = true;
       dualCalibCount = 0;
-      dualForwardSign = null;
+      dualForwardVec = null;
       calibProgress.textContent = "0";
 
       skipUnlocked = false;
@@ -1153,14 +1148,13 @@
     }
 
     function finishDualCalibration() {
-      // if somehow never set, default to +1
-      if (!dualForwardSign) dualForwardSign = +1;
+      if (!dualForwardVec) dualForwardVec = { x: 1, y: 0, z: 0 };
       dualCalibrating = false;
       calibToast.classList.remove("active");
     }
 
     function skipDualCalibration() {
-      dualForwardSign = +1;
+      dualForwardVec = { x: 1, y: 0, z: 0 };
       dualCalibrating = false;
       calibToast.classList.remove("active");
     }
@@ -1246,7 +1240,7 @@
     // Android Chrome does, and this is the "biggest" practical bump pattern.
     function bigHapticBump() {
       try {
-        if (navigator.vibrate) navigator.vibrate([50, 20, 70]);
+        if (navigator.vibrate) navigator.vibrate([40, 18, 55]);
       } catch (e) {}
     }
 
@@ -1321,121 +1315,73 @@
       }
     }
 
-    // ---- GYRO-BASED MOTION LOGIC (REDONE FROM SCRATCH) ----
-    // Uses DeviceMotionEvent.rotationRate (deg/s). Rings only on a *direction reversal* ("snap-back").
-    // This avoids the "accelerating from still" false trigger because we require actual rotation.
+    // ---- MOTION HANDLING (INSTANT RAW GYRO SNAP-BACK) ----
+    let lastRingTime = 0;
 
-    let lastRingTimeMs = 0;
+    // Keep these as "common numbers" (deg/sec).
+    // - ARM_START: how fast you must be rotating to begin tracking a swing
+    // - PEAK_MIN: build-up requirement (prevents "from still" and tiny jitters)
+    // - CROSS_MIN: how hard you must be moving on the snap-back frame itself
+    // - CALM_*: re-arm gate to prevent double rings
+    const MIN_INTERVAL_MS = 120;
 
-    // Debounce (allow fast consecutive rings)
-    const MIN_INTERVAL_MS = 140;
+    const ARM_START_DPS = 60;     // start tracking a swing once rotation is clearly happening
+    const PEAK_MIN_DPS  = 140;    // must build to at least this before a reversal can ring
+    const PEAK_MAX_DPS  = 600;    // intensity clamp ceiling
+    const CROSS_MIN_DPS = 80;     // snap-back must be at least this strong on reversal frame
 
-    // Main thresholds (common, easy-to-tune numbers)
-    // - ARM_OMEGA: must be rotating at least this fast to "arm" a swing
-    // - PEAK_OMEGA: must reach at least this peak during the build before reversal can ring
-    // - DISARM_OMEGA: must settle below this to fully re-arm (prevents jitter multi-triggers)
-    const ARM_OMEGA    = 90;   // deg/s
-    const PEAK_OMEGA   = 160;  // deg/s
-    const DISARM_OMEGA = 45;   // deg/s
+    const CALM_DPS      = 35;     // must drop below this to re-arm (prevents instant double fires)
+    const CALM_MS       = 60;     // how long under CALM_DPS to re-arm
 
-    // Require a little time building before reversal counts (prevents tiny flick noise)
-    const MIN_BUILD_MS = 60;
+    // Swing tracking state
+    let tracking = false;
+    let trackAxis = "x";          // locked axis for this swing
+    let trackSign = 0;            // sign of rotation on locked axis
+    let peakAbs = 0;              // peak abs rotation on locked axis during build
+    let calmSinceMs = null;       // used for re-arming
 
-    // Intensity mapping
-    const PEAK_MAX_OMEGA = 420; // deg/s (clamps intensity)
-
-    // Smoothing helps across devices + sampling rates
-    const OMEGA_LP_ALPHA = 0.55; // 0..1 (higher = smoother)
-
-    // State machine
-    // idle -> armed(building) -> ring on reversal -> cooldown -> idle when calm
-    let swingArmed = false;
-    let swingAxis = null;      // "alpha" | "beta" | "gamma"
-    let buildSign = 0;         // +1 or -1 direction during build
-    let buildPeakAbs = 0;
-    let armStartMs = 0;
-    let omegaLP = 0;
-    let calmSinceMs = null;
-
-    function signNonZero(x) {
-      const s = Math.sign(x);
-      return s === 0 ? 0 : s;
+    function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
+    function norm(v) {
+      const m = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+      if (!isFinite(m) || m < 1e-6) return { x: 0, y: 0, z: 0, m: 0 };
+      return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
 
-    function pickDominantAxis(rr) {
-      const a = rr.alpha || 0;
-      const b = rr.beta  || 0;
-      const g = rr.gamma || 0;
-      const aa = Math.abs(a), bb = Math.abs(b), gg = Math.abs(g);
-      if (bb >= aa && bb >= gg) return "beta";
-      if (gg >= aa && gg >= bb) return "gamma";
-      return "alpha";
+    function pickDominantAxis(v) {
+      const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
+      if (ax >= ay && ax >= az) return "x";
+      if (ay >= ax && ay >= az) return "y";
+      return "z";
     }
 
-    function getAxisValue(rr, axis) {
-      if (!rr) return 0;
-      if (axis === "beta") return rr.beta || 0;
-      if (axis === "gamma") return rr.gamma || 0;
-      return rr.alpha || 0;
+    function gyroMag(v) {
+      return Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
     }
 
-    function computeVisualDirFromOmega(axis, omega) {
-      // Purely cosmetic. We map axis/sign to a consistent look.
-      // beta ~ pitch (forward/back), gamma ~ roll (left/right), alpha ~ yaw (twist)
-      const s = Math.sign(omega);
-      if (axis === "gamma") return s >= 0 ? "left" : "right";
-      if (axis === "beta")  return s >= 0 ? "up"   : "down";
-      return s >= 0 ? "left" : "right";
+    function computeVisualDirFromGyro(v) {
+      // Simple mapping for visuals only (doesn't affect bell selection).
+      const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
+      const m = Math.max(ax, ay, az);
+      if (m < 1) return Math.random() < 0.5 ? "left" : "right";
+
+      if (m === ax) return v.x > 0 ? "left" : "right";
+      if (m === ay) return v.y > 0 ? "up" : "down";
+      return v.z > 0 ? "up" : "down";
     }
 
-    function ringEvent(buildDirSign, intensity, visualDir) {
-      // Two-bell calibration gating:
-      // - While dualCalibrating, DO NOT PLAY bells.
-      // - Instead, count 3 rings in the "Away From You" direction and then unlock play.
-      if (secondNote && dualCalibrating) {
-        // The user is being instructed to ring "Away From You" 3 times.
-        // We treat the BUILD direction sign as the "away" direction.
-        if (!dualForwardSign) {
-          dualForwardSign = buildDirSign || +1;
-          dualCalibCount = 1;
-        } else {
-          if ((buildDirSign || +1) === dualForwardSign) dualCalibCount++;
-          else {
-            // reset if they ring the wrong direction
-            dualForwardSign = buildDirSign || +1;
-            dualCalibCount = 1;
-          }
-        }
-
-        calibProgress.textContent = String(dualCalibCount);
-
-        if (dualCalibCount >= 3) {
-          finishDualCalibration(); // toast goes away; bells now allowed
-        }
-        return;
-      }
-
-      // Normal play:
-      const faceUpNow = isFaceUpLatched(performance.now());
-
-      ensureWakeLock();
-
-      if (secondNote) {
-        if (faceUpNow) {
-          // face-up ALWAYS rings both (only allowed when calibration is done)
-          playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
-          playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
-        } else {
-          // Choose bell by direction relative to calibrated "forward/away" sign
-          const f = dualForwardSign || +1;
-          const s = (buildDirSign || +1);
-
-          if (s === f) playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
-          else playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
-        }
+    function updateCalm(nowMs, omegaDps) {
+      if (omegaDps <= CALM_DPS) {
+        if (calmSinceMs == null) calmSinceMs = nowMs;
       } else {
-        playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+        calmSinceMs = null;
       }
+    }
+
+    function isRearmed(nowMs) {
+      // Must have been calm long enough, and not inside the minimum interval
+      if (nowMs - lastRingTime < MIN_INTERVAL_MS) return false;
+      if (calmSinceMs == null) return false;
+      return (nowMs - calmSinceMs) >= CALM_MS;
     }
 
     function handleMotion(event) {
@@ -1443,132 +1389,146 @@
 
       const nowMs = performance.now();
 
+      // keep your face-up latch / mute logic (uses accelIncludingGravity)
       updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
 
+      // --- RAW GYRO ---
       const rr = event.rotationRate;
       if (!rr) return;
 
-      // If we haven't completed face-up calibration yet, finalize it once user starts interacting
-      // (keeps your face-up latch behavior consistent)
-      if (!calibrationCompleted) {
-        stopCalibrationListening(true);
+      // DeviceMotionEvent.rotationRate is in deg/sec on most browsers.
+      // We'll treat these as a raw 3D angular velocity vector in device coords.
+      const omega = {
+        x: rr.beta  || 0,  // pitch rate
+        y: rr.gamma || 0,  // roll rate
+        z: rr.alpha || 0   // yaw rate
+      };
+
+      const omegaDps = gyroMag(omega);
+      updateCalm(nowMs, omegaDps);
+
+      // Start tracking a swing only after we're re-armed and rotation is clearly happening
+      if (!tracking) {
+        if (!isRearmed(nowMs)) return;
+        if (omegaDps < ARM_START_DPS) return;
+
+        trackAxis = pickDominantAxis(omega);
+        const comp = omega[trackAxis];
+        const s = Math.sign(comp);
+
+        // If the dominant axis is hovering around zero, don't start yet
+        if (s === 0) return;
+
+        tracking = true;
+        trackSign = s;
+        peakAbs = Math.abs(comp);
+        return;
       }
 
-      // If dual calibration is visible, we still want to *detect* rings for progress,
-      // but we block actual audio.
-      // (Tap-to-ring is separately blocked below via event handlers.)
+      // tracking swing
+      const comp = omega[trackAxis];
+      const absComp = Math.abs(comp);
+      const s = Math.sign(comp);
 
-      // Choose axis once we see meaningful rotation (stability across frames)
-      if (!swingAxis) swingAxis = pickDominantAxis(rr);
+      if (absComp > peakAbs) peakAbs = absComp;
 
-      const omegaRaw = getAxisValue(rr, swingAxis);
+      // Instantaneous snap-back condition:
+      // - axis sign flips (direction change)
+      // - built up enough beforehand (peakAbs >= PEAK_MIN_DPS)
+      // - snap-back frame itself is strong enough (absComp >= CROSS_MIN_DPS)
+      const signFlipped = (s !== 0 && trackSign !== 0 && s === -trackSign);
+      const buildOk = (peakAbs >= PEAK_MIN_DPS);
+      const crossOk = (absComp >= CROSS_MIN_DPS);
 
-      // Low-pass filter
-      omegaLP = omegaLP * OMEGA_LP_ALPHA + omegaRaw * (1 - OMEGA_LP_ALPHA);
+      if (signFlipped && buildOk && crossOk && (nowMs - lastRingTime >= MIN_INTERVAL_MS)) {
+        // Ring happens exactly on this frame
+        lastRingTime = nowMs;
 
-      const omegaAbs = Math.abs(omegaLP);
-      const omegaSign = signNonZero(omegaLP);
+        const clamped = Math.min(Math.max(peakAbs, PEAK_MIN_DPS), PEAK_MAX_DPS);
+        const intensity = (clamped - PEAK_MIN_DPS) / (PEAK_MAX_DPS - PEAK_MIN_DPS);
+        const visualDir = computeVisualDirFromGyro(omega);
 
-      // Calm detector to allow re-arming (helps fast double-rings)
-      if (omegaAbs <= DISARM_OMEGA) {
-        if (calmSinceMs == null) calmSinceMs = nowMs;
-      } else {
+        ensureWakeLock();
+
+        const faceUpNow = isFaceUpLatched(nowMs);
+
+        // Direction vector for 2-bell mapping & calibration:
+        // Use normalized raw gyro vector at the snap-back instant (no filtering).
+        const dirN = norm(omega);
+        const dir = (dirN.m > 0) ? { x: dirN.x, y: dirN.y, z: dirN.z } : (dualForwardVec || { x: 1, y: 0, z: 0 });
+
+        if (secondNote) {
+          if (faceUpNow) {
+            // face-up ALWAYS rings both, but ONLY when calibration toast is gone
+            if (!dualCalibrating) {
+              playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+              playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+            }
+          } else {
+            if (dualCalibrating) {
+              // Calibration: DO NOT PLAY bells, only count progress
+              if (!dualForwardVec) {
+                dualForwardVec = dir;
+                dualCalibCount = 1;
+              } else {
+                const sdot = dot(dir, dualForwardVec);
+                if (sdot >= 0) dualCalibCount++;
+                else {
+                  dualForwardVec = dir;
+                  dualCalibCount = 1;
+                }
+              }
+
+              calibProgress.textContent = String(dualCalibCount);
+
+              if (dualCalibCount >= 3) {
+                const nf = norm(dualForwardVec);
+                dualForwardVec = (nf.m > 0) ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
+                finishDualCalibration();
+              }
+            } else {
+              const f = dualForwardVec ? dualForwardVec : { x: 1, y: 0, z: 0 };
+              const sdot = dot(dir, f);
+              if (sdot >= 0) playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+              else playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+            }
+          }
+        } else {
+          playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+        }
+
+        // After a ring: stop tracking and require calm before re-arming.
+        tracking = false;
+        trackSign = 0;
+        peakAbs = 0;
+        // Reset calm timer so we force a real "settle" before next ring (prevents doubles)
         calmSinceMs = null;
-      }
-
-      // If we just rang, give cooldown time
-      if ((nowMs - lastRingTimeMs) < MIN_INTERVAL_MS) {
-        // still track arming state but do not ring again in interval
-        // (prevents chatter on sensor noise)
-      }
-
-      // (1) Arm only when we have a real swing building
-      if (!swingArmed) {
-        // reset peak tracking
-        buildPeakAbs = 0;
-        buildSign = 0;
-        armStartMs = 0;
-
-        // only arm when rotating fast enough and has a stable sign
-        if (omegaAbs >= ARM_OMEGA && omegaSign !== 0) {
-          swingArmed = true;
-          buildSign = omegaSign;
-          buildPeakAbs = omegaAbs;
-          armStartMs = nowMs;
-
-          // lock axis at arming moment (prevents axis flapping)
-          swingAxis = pickDominantAxis(rr);
-        }
-
         return;
       }
 
-      // (2) While armed: track peak during build direction
-      if (omegaSign === buildSign && omegaSign !== 0) {
-        if (omegaAbs > buildPeakAbs) buildPeakAbs = omegaAbs;
-        return;
-      }
-
-      // (3) Ring only on a FULL reversal (sign flip), after a big enough build
-      const reversed = (omegaSign !== 0 && omegaSign === -buildSign);
-
-      if (reversed) {
-        const buildTimeOk = (nowMs - armStartMs) >= MIN_BUILD_MS;
-        const peakOk = buildPeakAbs >= PEAK_OMEGA;
-        const intervalOk = (nowMs - lastRingTimeMs) >= MIN_INTERVAL_MS;
-
-        if (buildTimeOk && peakOk && intervalOk) {
-          lastRingTimeMs = nowMs;
-
-          // intensity based on build peak (not just instant omega)
-          const clampedPeak = Math.min(Math.max(buildPeakAbs, PEAK_OMEGA), PEAK_MAX_OMEGA);
-          const intensity = (clampedPeak - PEAK_OMEGA) / (PEAK_MAX_OMEGA - PEAK_OMEGA);
-
-          const visualDir = computeVisualDirFromOmega(swingAxis, omegaLP);
-
-          // The "buildSign" tells direction of the swing BEFORE snap-back.
-          ringEvent(buildSign, intensity, visualDir);
-        }
-
-        // After reversal handling, disarm and wait to calm to re-arm
-        swingArmed = false;
-
-        // Prefer re-picking axis after disarm
-        swingAxis = null;
-
-        return;
-      }
-
-      // (4) If sign went to 0-ish or got noisy, keep armed until it calms, then disarm.
-      // This prevents getting stuck in an armed state on weird sensors.
-      if (calmSinceMs != null && (nowMs - calmSinceMs) >= 80) {
-        swingArmed = false;
-        swingAxis = null;
+      // If the user stops rotating, abandon this swing cleanly
+      if (omegaDps < CALM_DPS) {
+        tracking = false;
+        trackSign = 0;
+        peakAbs = 0;
       }
     }
 
     function startMotionListening() {
-      swingArmed = false;
-      swingAxis = null;
-      buildSign = 0;
-      buildPeakAbs = 0;
-      armStartMs = 0;
-      omegaLP = 0;
-      calmSinceMs = null;
-
-      window.addEventListener("devicemotion", handleMotion);
+      tracking = false;
+      trackAxis = "x";
+      trackSign = 0;
+      peakAbs = 0;
+      calmSinceMs = performance.now(); // start "calm" immediately
+      window.addEventListener("devicemotion", handleMotion, { passive: true });
     }
 
     function stopMotionListening() {
       window.removeEventListener("devicemotion", handleMotion);
-
-      swingArmed = false;
-      swingAxis = null;
-      buildSign = 0;
-      buildPeakAbs = 0;
-      armStartMs = 0;
-      omegaLP = 0;
+      tracking = false;
+      trackSign = 0;
+      peakAbs = 0;
       calmSinceMs = null;
 
       faceDownTriggeredThisRingWindow = false;
@@ -1620,7 +1580,7 @@
       stopMotionListening();
       startMotionListening();
 
-      // tap-trigger preview (allowed)
+      // tap preview (allowed)
       playBellToRingEl(note, bellRingLeft, 1, null);
     }
 
@@ -1682,25 +1642,17 @@
 
     // Tap-to-ring (BLOCKED during dual calibration)
     playNoteLeft.addEventListener("click", () => {
-      if (!currentNote) return;
-      if (secondNote && dualCalibrating) return; // blocked until toast is gone
-      playBellToRingEl(currentNote, bellRingLeft, 1, null);
+      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
     bellVisualLeft.addEventListener("click", () => {
-      if (!currentNote) return;
-      if (secondNote && dualCalibrating) return; // blocked until toast is gone
-      playBellToRingEl(currentNote, bellRingLeft, 1, null);
+      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
 
     playNoteRight.addEventListener("click", () => {
-      if (!secondNote) return;
-      if (dualCalibrating) return; // blocked until toast is gone
-      playBellToRingEl(secondNote, bellRingRight, 1, null);
+      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
     bellVisualRight.addEventListener("click", () => {
-      if (!secondNote) return;
-      if (dualCalibrating) return; // blocked until toast is gone
-      playBellToRingEl(secondNote, bellRingRight, 1, null);
+      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
     function bindKeyActivate(el, fn) {
@@ -1712,14 +1664,10 @@
       });
     }
     bindKeyActivate(bellVisualLeft, () => {
-      if (!currentNote) return;
-      if (secondNote && dualCalibrating) return;
-      playBellToRingEl(currentNote, bellRingLeft, 1, null);
+      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
     bindKeyActivate(bellVisualRight, () => {
-      if (!secondNote) return;
-      if (dualCalibrating) return;
-      playBellToRingEl(secondNote, bellRingRight, 1, null);
+      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
     // Build note grid once; click behavior depends on mode
