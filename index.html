@@ -1319,18 +1319,17 @@
     let lastRingTime = 0;
 
     // “Common” numbers (deg/sec). Tune later if needed.
-    const MIN_INTERVAL_MS = 90;
+    const MIN_INTERVAL_MS = 80;
 
-    // Arming / tracking
-    const ARM_AXIS_DPS   = 45;   // must exceed on one axis to start tracking
-    const PEAK_MIN_DPS   = 120;  // must reach this peak during build-up
-    const PEAK_MAX_DPS   = 550;  // clamp for intensity
-    const CROSS_MIN_DPS  = 70;   // must be at least this on the flip frame
+    const ARM_AXIS_DPS   = 32;   // easier to start tracking
+    const PEAK_MIN_DPS   = 85;   // less build-up required
+    const PEAK_MAX_DPS   = 500;  // keep intensity reasonable
+    const CROSS_MIN_DPS  = 50;   // easier to trigger on the reversal frame
+    
+    const CALM_AXIS_DPS  = 22;
+    const CALM_MS        = 35;
+    const STABLE_SIGN_MS = 45;
 
-    // Rearm / anti-double
-    const CALM_AXIS_DPS  = 25;   // axis must drop below this to be “calm”
-    const CALM_MS        = 40;   // time under calm to fully rearm
-    const STABLE_SIGN_MS = 55;   // if sign stays consistent this long, allow rearm
 
     let tracking = false;
     let trackAxis = "x";
