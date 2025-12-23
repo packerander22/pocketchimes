@@ -907,7 +907,11 @@
     const FACEUP_ENTER_COS = -0.82;
     const FACEUP_EXIT_COS  = -0.60;
     let faceUpState = false;
-
+    
+    const dbg = document.createElement("div");
+    dbg.style.cssText = "position:fixed;bottom:6px;left:6px;z-index:9999;background:rgba(0,0,0,.55);color:#fff;padding:6px 8px;border-radius:8px;font:12px/1.2 system-ui;";
+    document.body.appendChild(dbg);
+    
     function getAccelMag(a) {
       if (!a) return Infinity;
       const ax = a.x || 0, ay = a.y || 0, az = a.z || 0;
@@ -1423,6 +1427,10 @@
         omega = { x: oriDps.x || 0, y: oriDps.y || 0, z: oriDps.z || 0 };
       }
 
+      if (!rr) { dbg.textContent = "rotationRate: null"; return; }
+      dbg.textContent =
+        `rr a:${(rr.alpha||0).toFixed(1)} b:${(rr.beta||0).toFixed(1)} g:${(rr.gamma||0).toFixed(1)}`;
+      
       const omegaDps = gyroMag(omega);
       updateCalm(nowMs, omegaDps);
 
