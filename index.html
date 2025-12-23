@@ -1353,15 +1353,17 @@
     // - Lower peak requirement
     // - Lower reversal-frame requirement
     // - Re-arm faster so repeated ringing works
-    const MIN_INTERVAL_MS = 70;
+    const MIN_INTERVAL_MS = 50;   // faster repeat rings
 
-    const ARM_START_DPS = 50;     // start tracking a swing sooner
-    const PEAK_MIN_DPS  = 250;    // your "floor" (you can set back to 400 later)
-    const PEAK_MAX_DPS  = 1600;   // intensity clamp ceiling (your peaks ~1200)
-    const CROSS_MIN_DPS = 80;     // reversal frame must cross past +/- this
+    const ARM_START_DPS = 35;     // start tracking sooner
+    const PEAK_MIN_DPS  = 180;    // easier build requirement (was 250)
+    const PEAK_MAX_DPS  = 1400;   // keep intensity scale reasonable for your peaks
+    
+    const CROSS_MIN_DPS = 55;     // easier snap-back crossing (was 80)
+    
+    const REARM_DPS = 260;        // easier/faster re-arm (was 200)
+    const REARM_MS  = 12;         // shorter settle time (was 20)
 
-    const REARM_DPS     = 200;    // to ring again, you just need to dip below this
-    const REARM_MS      = 20;     // for this long
 
     // Swing tracking state
     let tracking = false;
@@ -1511,7 +1513,7 @@ ${gateInfo}`;
       if (dom !== trackAxis) {
         const oldAbs = Math.abs(omega[trackAxis]);
         const newAbs = Math.abs(omega[dom]);
-        if (newAbs > oldAbs * 1.35 && newAbs >= ARM_START_DPS) {
+        if (newAbs > oldAbs * 1.15 && newAbs >= ARM_START_DPS) {
           trackAxis = dom;
           comp = omega[trackAxis];
           absComp = Math.abs(comp);
