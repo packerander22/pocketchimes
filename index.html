@@ -1349,13 +1349,13 @@
     // - desired "floor" around ~400
     const MIN_INTERVAL_MS = 90;
 
-    const ARM_START_DPS = 90;      // start tracking sooner
-    const PEAK_MIN_DPS  = 400;     // your floor
-    const PEAK_MAX_DPS  = 1600;    // intensity scaling upper bound
-    const CROSS_MIN_DPS = 160;     // reversal frame strength
+    const ARM_START_DPS = 9;      // start tracking sooner
+    const PEAK_MIN_DPS  = 40;     // your floor
+    const PEAK_MAX_DPS  = 200;    // intensity scaling upper bound
+    const CROSS_MIN_DPS = 16;     // reversal frame strength
 
     // Re-arm: do NOT require "dead calm" (35 dps). Allow re-arming during continuous swings.
-    const REARM_DPS = 120;
+    const REARM_DPS = 12;
     const REARM_MS  = 35;
 
     // Swing tracking state
