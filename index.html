@@ -249,7 +249,7 @@
       min-width: 0;
     }
 
-    /* --- Dual layout (remove the "tile" look) --- */
+    /* --- Dual layout --- */
     .dual-area {
       width: 100%;
       max-width: 520px;
@@ -1243,28 +1243,26 @@
       }
     }
 
+    // ---- PLAY GATING ----
+    // Bells cannot be played while the add-bell calibration toast is active.
+    function canPlayBellsNow() {
+      return !dualCalibrating;
+    }
+
     // ---- HAPTIC (best available on web) ----
     // NOTE: iOS Safari/PWA generally does NOT support vibration.
     // Android Chrome does, and this is the "biggest" practical bump pattern.
     function bigHapticBump() {
       try {
-        if (navigator.vibrate) navigator.vibrate([50, 20, 70]);
+        if (navigator.vibrate) navigator.vibrate([45, 18, 70]);
       } catch (e) {}
-    }
-
-    // ---- "Can we play right now?" gate ----
-    function canPlayBellsNow() {
-      // Your rule: bells cannot be played until the Add Bell calibration toast goes away.
-      // That is exactly "secondNote exists AND dualCalibrating".
-      if (secondNote && dualCalibrating) return false;
-      return true;
     }
 
     // ---- Play bell sample ----
     async function playBellToRingEl(note, ringEl, intensity = 1, visualDir = null) {
       if (!note) return;
 
-      // Big haptic ONLY when a bell actually rings (tap or motion both call this)
+      // Haptic bump when the bell actually rings (tap or motion)
       bigHapticBump();
 
       ensureAudioCtx();
@@ -1332,65 +1330,63 @@
       }
     }
 
-    // ---- MOTION HANDLING ----
+    // ---- MOTION HANDLING (REPLACED LOGIC) ----
     let lastRingTime = 0;
-    
-    // Faster repeat capability, still prevents double-fires
+
+    // faster repeat, still avoids double-fires
     const MIN_INTERVAL_MS = 140;
-    
-    // Minimum threshold shared for play + calibration
+
+    // MIN THRESHOLD = 5 (applies to play + calibration)
     const DELTA_RING_MIN = 5.0;
     const DELTA_RING_MAX = 12.0;
-    
+
     const RESET_DELTA = 1.5;
-    
-    // Window / consistency
-    const WINDOW_MS = 120;         // ~100ms goal, slightly forgiving
-    const ARM_AFTER_MOVE_MS = 80;  // prevents "from still" triggers
-    const STILL_RESET_MS = 140;    // how long under-reset before we consider "still"
-    
-    // Trigger tuning (easier than the super-strict version, but clean)
-    const DECEL_MIN = 2.5;   // strong decel within window
-    const JERK_MIN  = 1.2;   // sharp wrist snap
-    
+
+    // ~100ms goal, slightly forgiving
+    const WINDOW_MS = 120;
+    const ARM_AFTER_MOVE_MS = 80;
+    const STILL_RESET_MS = 140;
+
+    // strike sensitivity
+    const DECEL_MIN = 2.5;
+    const JERK_MIN  = 1.2;
+
     let inSwing = false;
     let lastMagnitude = null;
     let lastDelta = 0;
     let lastAx = null, lastAy = null, lastAz = null;
-    
+
     const samples = []; // { t, signedDelta, jerkMag }
-    
-    // Track "moving phase" so we don't ring from the first acceleration out of still
     let underResetSinceMs = null;
     let movingSinceMs = null;
-    
+
     function computeVisualDirFromJerk(jx, jy, jz) {
       const absX = Math.abs(jx), absY = Math.abs(jy), absZ = Math.abs(jz);
       const maxComp = Math.max(absX, absY, absZ);
       const MIN_JERK_DIR = 0.3;
-    
+
       if (maxComp < MIN_JERK_DIR) return Math.random() < 0.5 ? "left" : "right";
       if (maxComp === absX) return jx > 0 ? "left" : "right";
       if (maxComp === absY) return jy > 0 ? "up" : "down";
       return jz > 0 ? "up" : "down";
     }
-    
+
     function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
     function norm(v) {
       const m = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
       if (!isFinite(m) || m < 1e-6) return { x: 0, y: 0, z: 0, m: 0 };
       return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
-    
+
     function pruneSamples(nowMs) {
       while (samples.length && (nowMs - samples[0].t) > WINDOW_MS) samples.shift();
     }
-    
+
     function computeWindowStats() {
-      let buildPeak = 0;    // max positive delta (arming)
-      let decelPeak = 0;    // most negative delta (strike)
+      let buildPeak = 0;
+      let decelPeak = 0;
       let jerkPeak = 0;
-    
+
       for (const s of samples) {
         if (s.signedDelta > buildPeak) buildPeak = s.signedDelta;
         if (s.signedDelta < decelPeak) decelPeak = s.signedDelta;
@@ -1398,26 +1394,24 @@
       }
       return { buildPeak, decelPeak, jerkPeak };
     }
-    
-    // ---- CLEAN STRIKE DETECTION ----
-    // Key change: YOU CAN ONLY TRIGGER WHILE CURRENTLY DECELERATING (signedDelta < 0).
+
     function handleMotion(event) {
       if (!currentNote) return;
-    
+
       const nowMs = performance.now();
-    
+
       updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
-    
+
       let acc = event.acceleration;
       if (!acc || (acc.x === null && acc.y === null && acc.z === null)) {
         acc = event.accelerationIncludingGravity;
       }
       if (!acc) return;
-    
+
       const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
       const magnitude = Math.sqrt(ax*ax + ay*ay + az*az);
-    
+
       if (lastMagnitude === null || lastAx === null) {
         lastMagnitude = magnitude;
         lastAx = ax; lastAy = ay; lastAz = az;
@@ -1427,15 +1421,15 @@
         movingSinceMs = null;
         return;
       }
-    
+
       const jx = ax - lastAx, jy = ay - lastAy, jz = az - lastAz;
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
-    
-      // Determine "still" vs "moving"
+
+      // still vs moving
       if (absDelta < RESET_DELTA) {
         if (underResetSinceMs == null) underResetSinceMs = nowMs;
-    
+
         if ((nowMs - underResetSinceMs) >= STILL_RESET_MS) {
           movingSinceMs = null;
           inSwing = false;
@@ -1445,47 +1439,44 @@
         underResetSinceMs = null;
         if (movingSinceMs == null) movingSinceMs = nowMs;
       }
-    
-      // Opposite jerk vector (often aligns with "where swing was going")
+
+      // opposite jerk (often aligns with where swing was going)
       const oppJerk = { x: -jx, y: -jy, z: -jz };
       const jerkMag = Math.sqrt(oppJerk.x*oppJerk.x + oppJerk.y*oppJerk.y + oppJerk.z*oppJerk.z);
-    
+
       samples.push({ t: nowMs, signedDelta, jerkMag });
       pruneSamples(nowMs);
-    
+
       const { buildPeak, decelPeak, jerkPeak } = computeWindowStats();
-    
-      // Must be moving long enough + have a real build peak
+
       const movedLongEnough = (movingSinceMs != null) && ((nowMs - movingSinceMs) >= ARM_AFTER_MOVE_MS);
       const buildOk = movedLongEnough && (buildPeak >= DELTA_RING_MIN);
-    
-      // MUST be decelerating RIGHT NOW to ring (this kills "accelerate-from-still" rings)
+
+      // CRITICAL: only ring during deceleration NOW (prevents accelerate-from-still fires)
       const decelNow = signedDelta < 0;
-    
-      // Strike triggers: strong decel in window OR strong jerk in window (but still only while decelNow)
+
       const decelOk = (decelPeak <= -DECEL_MIN);
       const jerkOk  = (jerkPeak >= JERK_MIN);
-    
+
       const intervalOk = (nowMs - lastRingTime) >= MIN_INTERVAL_MS;
-    
+
       const playAllowed = canPlayBellsNow();
-    
+
       const canRing = buildOk && decelNow && (decelOk || jerkOk) && intervalOk;
-    
+
       if (!inSwing && canRing) {
         inSwing = true;
         lastRingTime = nowMs;
-    
+
         const clamped = Math.min(Math.max(buildPeak, DELTA_RING_MIN), DELTA_RING_MAX);
         const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
         const visualDir = computeVisualDirFromJerk(jx, jy, jz);
-    
+
         ensureWakeLock();
-    
+
         const faceUpNow = isFaceUpLatched(nowMs);
-    
+
         const jN = norm(oppJerk);
-    
         const JERK_DIR_MIN = 0.35;
         let dir;
         if (jN.m < JERK_DIR_MIN && dualForwardVec) {
@@ -1495,15 +1486,17 @@
         } else {
           dir = dualForwardVec || { x: 1, y: 0, z: 0 };
         }
-    
+
         if (secondNote) {
           if (faceUpNow) {
+            // face-up rings both, but only after calibration toast is gone
             if (playAllowed) {
               playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
               playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
             }
           } else {
             if (dualCalibrating) {
+              // calibration: DO NOT PLAY bells; only count progress (uses same threshold logic)
               if (!dualForwardVec) {
                 dualForwardVec = dir;
                 dualCalibCount = 1;
@@ -1515,9 +1508,9 @@
                   dualCalibCount = 1;
                 }
               }
-    
+
               calibProgress.textContent = String(dualCalibCount);
-    
+
               if (dualCalibCount >= 3) {
                 const nf = norm(dualForwardVec);
                 dualForwardVec = (nf.m > 0) ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
@@ -1526,7 +1519,7 @@
             } else {
               const f = dualForwardVec ? dualForwardVec : { x: 1, y: 0, z: 0 };
               const s = dot(dir, f);
-    
+
               if (s >= 0) playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
               else playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
             }
@@ -1535,17 +1528,60 @@
           if (playAllowed) playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
         }
       }
-    
-      // Re-arm: once we're quiet for a moment, allow another ring
+
+      // re-arm quickly once we're quiet for a moment
       if (absDelta < RESET_DELTA && underResetSinceMs != null && (nowMs - underResetSinceMs) >= 80) {
         inSwing = false;
       }
-    
+
       lastMagnitude = magnitude;
       lastDelta = signedDelta;
       lastAx = ax; lastAy = ay; lastAz = az;
     }
 
+    function startMotionListening() {
+      lastMagnitude = null;
+      lastDelta = 0;
+      lastAx = lastAy = lastAz = null;
+      inSwing = false;
+
+      samples.length = 0;
+      underResetSinceMs = null;
+      movingSinceMs = null;
+
+      window.addEventListener("devicemotion", handleMotion);
+    }
+
+    function stopMotionListening() {
+      window.removeEventListener("devicemotion", handleMotion);
+
+      lastMagnitude = null;
+      lastDelta = 0;
+      lastAx = lastAy = lastAz = null;
+      inSwing = false;
+
+      samples.length = 0;
+      underResetSinceMs = null;
+      movingSinceMs = null;
+
+      faceDownTriggeredThisRingWindow = false;
+      activeRings.clear();
+    }
+
+    // ---- MOTION PERMISSION (iOS) ----
+    async function requestMotionPermission() {
+      try {
+        if (typeof DeviceMotionEvent !== "undefined" &&
+            typeof DeviceMotionEvent.requestPermission === "function") {
+          const res = await DeviceMotionEvent.requestPermission();
+          return res === "granted";
+        }
+        return true;
+      } catch (err) {
+        console.error("Motion permission error:", err);
+        return false;
+      }
+    }
 
     // ---- UI FLOW ----
     startBtn.addEventListener("click", async () => {
@@ -1577,7 +1613,7 @@
       stopMotionListening();
       startMotionListening();
 
-      // initial preview ring is allowed (not dual-calibrating yet)
+      // allow initial preview ring (single bell)
       playBellToRingEl(note, bellRingLeft, 1, null);
     }
 
@@ -1588,7 +1624,6 @@
       setDualUI();
       showPlayScreen();
 
-      // start calibration (during this, bells are blocked until toast goes away)
       startDualCalibration();
       refreshTopRightButtons();
     }
@@ -1638,7 +1673,7 @@
       skipDualCalibration();
     });
 
-    // Tap-to-ring (BLOCKED during dual calibration)
+    // Tap-to-ring (BLOCKED during dual calibration toast)
     playNoteLeft.addEventListener("click", () => {
       if (!canPlayBellsNow()) return;
       if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
