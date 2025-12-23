@@ -475,11 +475,6 @@
         inset 0 0 0 1px rgba(248,250,252,0.25);
     }
 
-    /* Gain slider: kept, but commented out / not used right now */
-    /*
-    .gain-control{ ... }
-    */
-
     .sustain-control {
       position: fixed;
       bottom: calc(14px + env(safe-area-inset-bottom));
@@ -571,11 +566,6 @@
       <div class="note-help" id="note-help">Swing to ring. You’ll see your note and bell on the next screen.</div>
     </div>
   </div>
-
-  <!-- Gain slider removed for now (kept in code comments above) -->
-  <!--
-  <div class="gain-control" id="gain-wrapper" aria-label="Gain control"> ... </div>
-  -->
 
   <div class="sustain-control" id="sustain-wrapper" aria-label="Damping control">
     <div class="sustain-header">
@@ -1255,6 +1245,9 @@
 
     // ---- Play bell sample ----
     async function playBellToRingEl(note, ringEl, intensity = 1, visualDir = null) {
+      // NEW: hard gate — no playing while add-bell calibration toast is visible
+      if (dualCalibrating) return;
+
       if (!note) return;
 
       ensureAudioCtx();
@@ -1326,7 +1319,7 @@
     let lastRingTime = 0;
 
     const MIN_INTERVAL   = 200;
-    const DELTA_RING_MIN = 3.0;
+    const DELTA_RING_MIN = 5.0;   // CHANGED: was 3.0, now 5.0 (applies everywhere, incl calibration)
     const DELTA_RING_MAX = 10.0;
     const RESET_DELTA    = 1.5;
 
@@ -1422,8 +1415,10 @@
           if (secondNote) {
             if (faceUpNow) {
               // face-up ALWAYS rings both
-              playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
-              playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+              if (!dualCalibrating) {
+                playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+                playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+              }
             } else {
               if (dualCalibrating) {
                 // 3 consecutive in same direction (jerk-based)
@@ -1590,17 +1585,17 @@
 
     // Tap-to-ring
     playNoteLeft.addEventListener("click", () => {
-      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
+      if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
     bellVisualLeft.addEventListener("click", () => {
-      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
+      if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
 
     playNoteRight.addEventListener("click", () => {
-      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
+      if (secondNote) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
     bellVisualRight.addEventListener("click", () => {
-      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
+      if (secondNote) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
     function bindKeyActivate(el, fn) {
@@ -1612,10 +1607,10 @@
       });
     }
     bindKeyActivate(bellVisualLeft, () => {
-      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
+      if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
     bindKeyActivate(bellVisualRight, () => {
-      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
+      if (secondNote) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
     // Build note grid once; click behavior depends on mode
