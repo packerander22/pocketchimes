@@ -907,11 +907,7 @@
     const FACEUP_ENTER_COS = -0.82;
     const FACEUP_EXIT_COS  = -0.60;
     let faceUpState = false;
-    
-    const dbg = document.createElement("div");
-    dbg.style.cssText = "position:fixed;bottom:6px;left:6px;z-index:9999;background:rgba(0,0,0,.55);color:#fff;padding:6px 8px;border-radius:8px;font:12px/1.2 system-ui;";
-    document.body.appendChild(dbg);
-    
+
     function getAccelMag(a) {
       if (!a) return Infinity;
       const ax = a.x || 0, ay = a.y || 0, az = a.z || 0;
@@ -1118,8 +1114,10 @@
     let dualCalibrating = false;
     let dualCalibCount = 0;
 
+    // normalized direction for "Away From You"
     let dualForwardVec = null;
 
+    // Skip gating: user must click Info first
     let skipUnlocked = false;
 
     function resetDualMode() {
@@ -1172,6 +1170,7 @@
         `linear-gradient(90deg, ${currentNote.color} 0%, ${currentNote.color} 50%, ${secondNote.color} 50%, ${secondNote.color} 100%)`;
     }
 
+    // ---- Add-bell mode uses the SAME note screen ----
     let noteSelectMode = "primary";
 
     function setNoteScreenTextForMode(mode) {
@@ -1236,7 +1235,9 @@
       }
     }
 
-    // ---- HAPTIC ----
+    // ---- HAPTIC (best available on web) ----
+    // NOTE: iOS Safari/PWA generally does NOT support vibration.
+    // Android Chrome does, and this is the "biggest" practical bump pattern.
     function bigHapticBump() {
       try {
         if (navigator.vibrate) navigator.vibrate([40, 18, 55]);
@@ -1293,6 +1294,7 @@
 
       lastBellPlayMs = performance.now();
 
+      // visuals
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
@@ -1315,53 +1317,53 @@
 
     // ---- MOTION HANDLING (AXIS-BASED RAW GYRO SNAP-BACK) ----
     let lastRingTime = 0;
-    
-    // Simple, “common” numbers (deg/sec). Tune later if needed.
+
+    // “Common” numbers (deg/sec). Tune later if needed.
     const MIN_INTERVAL_MS = 90;
-    
+
     // Arming / tracking
     const ARM_AXIS_DPS   = 45;   // must exceed on one axis to start tracking
     const PEAK_MIN_DPS   = 120;  // must reach this peak during build-up
     const PEAK_MAX_DPS   = 550;  // clamp for intensity
     const CROSS_MIN_DPS  = 70;   // must be at least this on the flip frame
-    
+
     // Rearm / anti-double
     const CALM_AXIS_DPS  = 25;   // axis must drop below this to be “calm”
     const CALM_MS        = 40;   // time under calm to fully rearm
     const STABLE_SIGN_MS = 55;   // if sign stays consistent this long, allow rearm
-    
+
     let tracking = false;
-    let trackAxis = "x";     // "x" = beta, "y" = gamma, "z" = alpha (we map below)
+    let trackAxis = "x";
     let trackSign = 0;
     let peakAbs = 0;
-    
+
     let calmSinceMs = null;
     let stableSignSinceMs = null;
     let lastAxisSign = 0;
-    
-    // Map rotationRate → our axis naming
+
+    // Map rotationRate → axis vector
     function getOmegaFromRotationRate(rr) {
       return {
-        x: rr.beta  || 0,  // pitch rate
-        y: rr.gamma || 0,  // roll rate
-        z: rr.alpha || 0   // yaw rate
+        x: rr.beta  || 0,  // pitch
+        y: rr.gamma || 0,  // roll
+        z: rr.alpha || 0   // yaw
       };
     }
-    
+
     function pickDominantAxisByAbs(omega) {
       const ax = Math.abs(omega.x), ay = Math.abs(omega.y), az = Math.abs(omega.z);
       if (ax >= ay && ax >= az) return "x";
       if (ay >= ax && ay >= az) return "y";
       return "z";
     }
-    
+
     function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
     function norm(v) {
       const m = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
       if (!isFinite(m) || m < 1e-6) return { x: 0, y: 0, z: 0, m: 0 };
       return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
-    
+
     function computeVisualDirFromGyro(omega) {
       const ax = Math.abs(omega.x), ay = Math.abs(omega.y), az = Math.abs(omega.z);
       const m = Math.max(ax, ay, az);
@@ -1370,7 +1372,7 @@
       if (m === ay) return omega.y > 0 ? "up" : "down";
       return omega.z > 0 ? "up" : "down";
     }
-    
+
     function updateRearmTimers(nowMs, axisAbs, axisSign) {
       // Calm timer
       if (axisAbs <= CALM_AXIS_DPS) {
@@ -1378,8 +1380,8 @@
       } else {
         calmSinceMs = null;
       }
-    
-      // Stable sign timer (lets you ring repeatedly without requiring “perfect calm”)
+
+      // Stable sign timer
       if (axisSign !== 0 && axisSign === lastAxisSign) {
         if (stableSignSinceMs == null) stableSignSinceMs = nowMs;
       } else {
@@ -1387,79 +1389,76 @@
         lastAxisSign = axisSign;
       }
     }
-    
+
     function isRearmed(nowMs) {
       if (nowMs - lastRingTime < MIN_INTERVAL_MS) return false;
-    
+
       const calmOk = (calmSinceMs != null) && ((nowMs - calmSinceMs) >= CALM_MS);
       const stableOk = (stableSignSinceMs != null) && ((nowMs - stableSignSinceMs) >= STABLE_SIGN_MS);
-    
-      // Either calm long enough OR sign stable long enough
+
       return calmOk || stableOk;
     }
-    
+
     function handleMotion(event) {
       if (!currentNote) return;
-    
+
       const nowMs = performance.now();
-    
-      // keep face-up latch / mute logic (uses accelIncludingGravity)
+
       updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
-    
+
       const rr = event.rotationRate;
       if (!rr) return;
-    
+
       const omega = getOmegaFromRotationRate(rr);
-    
-      // For rearm logic we look at the currently dominant axis each frame
+
+      // Rearm uses currently dominant axis each frame
       const domAxisNow = pickDominantAxisByAbs(omega);
       const compNow = omega[domAxisNow];
       const absNow = Math.abs(compNow);
       const signNow = Math.sign(compNow);
-    
+
       updateRearmTimers(nowMs, absNow, signNow);
-    
-      // --- Start tracking ---
+
+      // Start tracking
       if (!tracking) {
         if (!isRearmed(nowMs)) return;
         if (absNow < ARM_AXIS_DPS) return;
         if (signNow === 0) return;
-    
+
         tracking = true;
         trackAxis = domAxisNow;
         trackSign = signNow;
         peakAbs = absNow;
         return;
       }
-    
-      // --- Tracking swing on locked axis ---
+
+      // Tracking on locked axis
       const comp = omega[trackAxis];
       const absComp = Math.abs(comp);
       const s = Math.sign(comp);
-    
+
       if (absComp > peakAbs) peakAbs = absComp;
-    
+
       const signFlipped = (s !== 0 && trackSign !== 0 && s === -trackSign);
       const buildOk = (peakAbs >= PEAK_MIN_DPS);
       const crossOk = (absComp >= CROSS_MIN_DPS);
-    
+
       if (signFlipped && buildOk && crossOk && (nowMs - lastRingTime >= MIN_INTERVAL_MS)) {
         lastRingTime = nowMs;
-    
+
         const clamped = Math.min(Math.max(peakAbs, PEAK_MIN_DPS), PEAK_MAX_DPS);
         const intensity = (clamped - PEAK_MIN_DPS) / (PEAK_MAX_DPS - PEAK_MIN_DPS);
         const visualDir = computeVisualDirFromGyro(omega);
-    
+
         ensureWakeLock();
-    
+
         const faceUpNow = isFaceUpLatched(nowMs);
-    
-        // Direction vector for 2-bell mapping & calibration:
-        // Use normalized gyro at snap-back moment (as close to “raw” as iOS gives us).
+
+        // Direction vector for 2-bell mapping & calibration
         const dirN = norm(omega);
         const dir = (dirN.m > 0) ? { x: dirN.x, y: dirN.y, z: dirN.z } : (dualForwardVec || { x: 1, y: 0, z: 0 });
-    
+
         if (secondNote) {
           if (faceUpNow) {
             if (!dualCalibrating) {
@@ -1479,9 +1478,9 @@
                   dualCalibCount = 1;
                 }
               }
-    
+
               calibProgress.textContent = String(dualCalibCount);
-    
+
               if (dualCalibCount >= 3) {
                 const nf = norm(dualForwardVec);
                 dualForwardVec = (nf.m > 0) ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
@@ -1497,19 +1496,19 @@
         } else {
           playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
         }
-    
-        // Reset tracking immediately after ring so it feels instant and avoids double fires
+
+        // Reset tracking immediately after ring (avoid doubles)
         tracking = false;
         trackSign = 0;
         peakAbs = 0;
-    
-        // Force a short rearm barrier without demanding total stillness
-        calmSinceMs = nowMs;            // start “calm window” now
-        stableSignSinceMs = null;       // require sign to stabilize again
+
+        // Short rearm barrier without demanding total stillness
+        calmSinceMs = nowMs;
+        stableSignSinceMs = null;
         lastAxisSign = 0;
         return;
       }
-    
+
       // If we lose the signal, abandon tracking
       if (absComp < CALM_AXIS_DPS) {
         tracking = false;
@@ -1517,37 +1516,37 @@
         peakAbs = 0;
       }
     }
-    
+
     function startMotionListening() {
       tracking = false;
       trackAxis = "x";
       trackSign = 0;
       peakAbs = 0;
-    
+
       lastRingTime = 0;
       calmSinceMs = performance.now();
       stableSignSinceMs = null;
       lastAxisSign = 0;
-    
+
       window.addEventListener("devicemotion", handleMotion, { passive: true });
     }
-    
+
     function stopMotionListening() {
       window.removeEventListener("devicemotion", handleMotion);
-    
+
       tracking = false;
       trackSign = 0;
       peakAbs = 0;
-    
+
       calmSinceMs = null;
       stableSignSinceMs = null;
       lastAxisSign = 0;
-    
+
       faceDownTriggeredThisRingWindow = false;
       activeRings.clear();
     }
 
-    // ---- PERMISSIONS (iOS) ----
+    // ---- MOTION PERMISSION (iOS) ----
     async function requestMotionPermission() {
       try {
         if (typeof DeviceMotionEvent !== "undefined" &&
@@ -1562,34 +1561,14 @@
       }
     }
 
-    async function requestOrientationPermission() {
-      try {
-        if (typeof DeviceOrientationEvent !== "undefined" &&
-            typeof DeviceOrientationEvent.requestPermission === "function") {
-          const res = await DeviceOrientationEvent.requestPermission();
-          return res === "granted";
-        }
-        return true;
-      } catch (err) {
-        console.error("Orientation permission error:", err);
-        return false;
-      }
-    }
-
     // ---- UI FLOW ----
     startBtn.addEventListener("click", async () => {
       await resumeAudioCtx();
-
-      const motionGranted = await requestMotionPermission();
-      const orientGranted = await requestOrientationPermission();
-
-      if (!motionGranted || !orientGranted) {
-        alert("Motion/orientation access hasn't been granted yet. Please allow access and try again.");
+      const granted = await requestMotionPermission();
+      if (!granted) {
+        alert("Motion access hasn't been granted yet. Close this window and try again.");
         return;
       }
-
-      // start orientation fallback stream (harmless if unused)
-      startOrientationFallback();
 
       startCalibrationListeningOnce();
 
@@ -1612,6 +1591,7 @@
       stopMotionListening();
       startMotionListening();
 
+      // tap preview
       playBellToRingEl(note, bellRingLeft, 1, null);
     }
 
@@ -1656,6 +1636,7 @@
       showPlayScreen();
     });
 
+    // Calibration info / skip gating
     calibInfoBtn.addEventListener("click", () => {
       alert(
         "If you can’t swing your device, you can skip calibration.\n\n" +
@@ -1670,6 +1651,7 @@
       skipDualCalibration();
     });
 
+    // Tap-to-ring (BLOCKED during dual calibration)
     playNoteLeft.addEventListener("click", () => {
       if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
@@ -1699,6 +1681,7 @@
       if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
+    // Build note grid once; click behavior depends on mode
     function initNoteButtons() {
       NOTES.forEach((n) => {
         const btn = document.createElement("button");
@@ -1757,7 +1740,6 @@
         showNoteScreen("primary");
         showHeadphoneWarningOnce();
         startCalibrationListeningOnce();
-        startOrientationFallback();
       }
     });
 
