@@ -1313,166 +1313,153 @@
       }
     }
 
-    // ---- MOTION HANDLING (INSTANT RAW GYRO SNAP-BACK) ----
+    // ---- MOTION HANDLING (AXIS-BASED RAW GYRO SNAP-BACK) ----
     let lastRingTime = 0;
-
-    const MIN_INTERVAL_MS = 120;
-
-    const ARM_START_DPS = 60;
-    const PEAK_MIN_DPS  = 140;
-    const PEAK_MAX_DPS  = 600;
-    const CROSS_MIN_DPS = 80;
-
-    const CALM_DPS      = 35;
-    const CALM_MS       = 60;
-
+    
+    // Simple, “common” numbers (deg/sec). Tune later if needed.
+    const MIN_INTERVAL_MS = 90;
+    
+    // Arming / tracking
+    const ARM_AXIS_DPS   = 45;   // must exceed on one axis to start tracking
+    const PEAK_MIN_DPS   = 120;  // must reach this peak during build-up
+    const PEAK_MAX_DPS   = 550;  // clamp for intensity
+    const CROSS_MIN_DPS  = 70;   // must be at least this on the flip frame
+    
+    // Rearm / anti-double
+    const CALM_AXIS_DPS  = 25;   // axis must drop below this to be “calm”
+    const CALM_MS        = 40;   // time under calm to fully rearm
+    const STABLE_SIGN_MS = 55;   // if sign stays consistent this long, allow rearm
+    
     let tracking = false;
-    let trackAxis = "x";
+    let trackAxis = "x";     // "x" = beta, "y" = gamma, "z" = alpha (we map below)
     let trackSign = 0;
     let peakAbs = 0;
+    
     let calmSinceMs = null;
-
+    let stableSignSinceMs = null;
+    let lastAxisSign = 0;
+    
+    // Map rotationRate → our axis naming
+    function getOmegaFromRotationRate(rr) {
+      return {
+        x: rr.beta  || 0,  // pitch rate
+        y: rr.gamma || 0,  // roll rate
+        z: rr.alpha || 0   // yaw rate
+      };
+    }
+    
+    function pickDominantAxisByAbs(omega) {
+      const ax = Math.abs(omega.x), ay = Math.abs(omega.y), az = Math.abs(omega.z);
+      if (ax >= ay && ax >= az) return "x";
+      if (ay >= ax && ay >= az) return "y";
+      return "z";
+    }
+    
     function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
     function norm(v) {
       const m = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
       if (!isFinite(m) || m < 1e-6) return { x: 0, y: 0, z: 0, m: 0 };
       return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
-
-    function pickDominantAxis(v) {
-      const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
-      if (ax >= ay && ax >= az) return "x";
-      if (ay >= ax && ay >= az) return "y";
-      return "z";
-    }
-
-    function gyroMag(v) {
-      return Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
-    }
-
-    function computeVisualDirFromGyro(v) {
-      const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
+    
+    function computeVisualDirFromGyro(omega) {
+      const ax = Math.abs(omega.x), ay = Math.abs(omega.y), az = Math.abs(omega.z);
       const m = Math.max(ax, ay, az);
       if (m < 1) return Math.random() < 0.5 ? "left" : "right";
-      if (m === ax) return v.x > 0 ? "left" : "right";
-      if (m === ay) return v.y > 0 ? "up" : "down";
-      return v.z > 0 ? "up" : "down";
+      if (m === ax) return omega.x > 0 ? "left" : "right";
+      if (m === ay) return omega.y > 0 ? "up" : "down";
+      return omega.z > 0 ? "up" : "down";
     }
-
-    function updateCalm(nowMs, omegaDps) {
-      if (omegaDps <= CALM_DPS) {
+    
+    function updateRearmTimers(nowMs, axisAbs, axisSign) {
+      // Calm timer
+      if (axisAbs <= CALM_AXIS_DPS) {
         if (calmSinceMs == null) calmSinceMs = nowMs;
       } else {
         calmSinceMs = null;
       }
+    
+      // Stable sign timer (lets you ring repeatedly without requiring “perfect calm”)
+      if (axisSign !== 0 && axisSign === lastAxisSign) {
+        if (stableSignSinceMs == null) stableSignSinceMs = nowMs;
+      } else {
+        stableSignSinceMs = (axisSign !== 0) ? nowMs : null;
+        lastAxisSign = axisSign;
+      }
     }
-
+    
     function isRearmed(nowMs) {
       if (nowMs - lastRingTime < MIN_INTERVAL_MS) return false;
-      if (calmSinceMs == null) return false;
-      return (nowMs - calmSinceMs) >= CALM_MS;
+    
+      const calmOk = (calmSinceMs != null) && ((nowMs - calmSinceMs) >= CALM_MS);
+      const stableOk = (stableSignSinceMs != null) && ((nowMs - stableSignSinceMs) >= STABLE_SIGN_MS);
+    
+      // Either calm long enough OR sign stable long enough
+      return calmOk || stableOk;
     }
-
-    // -------- deviceorientation fallback "gyro-ish" --------
-    let lastOri = null;
-    let oriDps = { x: 0, y: 0, z: 0 };
-    function startOrientationFallback() {
-      lastOri = null;
-      window.addEventListener("deviceorientation", (e) => {
-        const now = performance.now();
-        const a = (e.alpha == null) ? null : e.alpha;
-        const b = (e.beta  == null) ? null : e.beta;
-        const g = (e.gamma == null) ? null : e.gamma;
-        if (a == null && b == null && g == null) return;
-
-        if (!lastOri) {
-          lastOri = { t: now, a: a || 0, b: b || 0, g: g || 0 };
-          return;
-        }
-
-        const dt = (now - lastOri.t) / 1000;
-        if (dt <= 0) return;
-
-        const da = (a || 0) - lastOri.a;
-        const db = (b || 0) - lastOri.b;
-        const dg = (g || 0) - lastOri.g;
-
-        // crude deg/sec estimate (good enough as a backup signal)
-        oriDps = { x: db / dt, y: dg / dt, z: da / dt };
-
-        lastOri = { t: now, a: a || 0, b: b || 0, g: g || 0 };
-      }, { passive: true });
-    }
-
+    
     function handleMotion(event) {
       if (!currentNote) return;
-
+    
       const nowMs = performance.now();
-
+    
+      // keep face-up latch / mute logic (uses accelIncludingGravity)
       updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
-
-      // Prefer rotationRate, but fall back to deviceorientation-derived rates on iOS flakiness
-      let omega = null;
-
+    
       const rr = event.rotationRate;
-      if (rr && (rr.alpha != null || rr.beta != null || rr.gamma != null)) {
-        omega = {
-          x: rr.beta  || 0,
-          y: rr.gamma || 0,
-          z: rr.alpha || 0
-        };
-      } else {
-        // fallback
-        omega = { x: oriDps.x || 0, y: oriDps.y || 0, z: oriDps.z || 0 };
-      }
-
-      if (!rr) { dbg.textContent = "rotationRate: null"; return; }
-      dbg.textContent =
-        `rr a:${(rr.alpha||0).toFixed(1)} b:${(rr.beta||0).toFixed(1)} g:${(rr.gamma||0).toFixed(1)}`;
-      
-      const omegaDps = gyroMag(omega);
-      updateCalm(nowMs, omegaDps);
-
+      if (!rr) return;
+    
+      const omega = getOmegaFromRotationRate(rr);
+    
+      // For rearm logic we look at the currently dominant axis each frame
+      const domAxisNow = pickDominantAxisByAbs(omega);
+      const compNow = omega[domAxisNow];
+      const absNow = Math.abs(compNow);
+      const signNow = Math.sign(compNow);
+    
+      updateRearmTimers(nowMs, absNow, signNow);
+    
+      // --- Start tracking ---
       if (!tracking) {
         if (!isRearmed(nowMs)) return;
-        if (omegaDps < ARM_START_DPS) return;
-
-        trackAxis = pickDominantAxis(omega);
-        const comp0 = omega[trackAxis];
-        const s0 = Math.sign(comp0);
-        if (s0 === 0) return;
-
+        if (absNow < ARM_AXIS_DPS) return;
+        if (signNow === 0) return;
+    
         tracking = true;
-        trackSign = s0;
-        peakAbs = Math.abs(comp0);
+        trackAxis = domAxisNow;
+        trackSign = signNow;
+        peakAbs = absNow;
         return;
       }
-
+    
+      // --- Tracking swing on locked axis ---
       const comp = omega[trackAxis];
       const absComp = Math.abs(comp);
       const s = Math.sign(comp);
-
+    
       if (absComp > peakAbs) peakAbs = absComp;
-
+    
       const signFlipped = (s !== 0 && trackSign !== 0 && s === -trackSign);
       const buildOk = (peakAbs >= PEAK_MIN_DPS);
       const crossOk = (absComp >= CROSS_MIN_DPS);
-
+    
       if (signFlipped && buildOk && crossOk && (nowMs - lastRingTime >= MIN_INTERVAL_MS)) {
         lastRingTime = nowMs;
-
+    
         const clamped = Math.min(Math.max(peakAbs, PEAK_MIN_DPS), PEAK_MAX_DPS);
         const intensity = (clamped - PEAK_MIN_DPS) / (PEAK_MAX_DPS - PEAK_MIN_DPS);
         const visualDir = computeVisualDirFromGyro(omega);
-
+    
         ensureWakeLock();
-
+    
         const faceUpNow = isFaceUpLatched(nowMs);
-
+    
+        // Direction vector for 2-bell mapping & calibration:
+        // Use normalized gyro at snap-back moment (as close to “raw” as iOS gives us).
         const dirN = norm(omega);
         const dir = (dirN.m > 0) ? { x: dirN.x, y: dirN.y, z: dirN.z } : (dualForwardVec || { x: 1, y: 0, z: 0 });
-
+    
         if (secondNote) {
           if (faceUpNow) {
             if (!dualCalibrating) {
@@ -1492,9 +1479,9 @@
                   dualCalibCount = 1;
                 }
               }
-
+    
               calibProgress.textContent = String(dualCalibCount);
-
+    
               if (dualCalibCount >= 3) {
                 const nf = norm(dualForwardVec);
                 dualForwardVec = (nf.m > 0) ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
@@ -1510,37 +1497,52 @@
         } else {
           playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
         }
-
+    
+        // Reset tracking immediately after ring so it feels instant and avoids double fires
         tracking = false;
         trackSign = 0;
         peakAbs = 0;
-        calmSinceMs = null;
+    
+        // Force a short rearm barrier without demanding total stillness
+        calmSinceMs = nowMs;            // start “calm window” now
+        stableSignSinceMs = null;       // require sign to stabilize again
+        lastAxisSign = 0;
         return;
       }
-
-      if (omegaDps < CALM_DPS) {
+    
+      // If we lose the signal, abandon tracking
+      if (absComp < CALM_AXIS_DPS) {
         tracking = false;
         trackSign = 0;
         peakAbs = 0;
       }
     }
-
+    
     function startMotionListening() {
       tracking = false;
       trackAxis = "x";
       trackSign = 0;
       peakAbs = 0;
+    
+      lastRingTime = 0;
       calmSinceMs = performance.now();
+      stableSignSinceMs = null;
+      lastAxisSign = 0;
+    
       window.addEventListener("devicemotion", handleMotion, { passive: true });
     }
-
+    
     function stopMotionListening() {
       window.removeEventListener("devicemotion", handleMotion);
+    
       tracking = false;
       trackSign = 0;
       peakAbs = 0;
+    
       calmSinceMs = null;
-
+      stableSignSinceMs = null;
+      lastAxisSign = 0;
+    
       faceDownTriggeredThisRingWindow = false;
       activeRings.clear();
     }
