@@ -638,6 +638,27 @@
     </div>
   </div>
 
+  <!-- DEBUG OVERLAY (tap to reset peaks) -->
+  <div id="debug" style="
+    position: fixed;
+    left: 10px;
+    bottom: 10px;
+    z-index: 9999;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.25;
+    color: rgba(255,255,255,0.92);
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 10px 12px;
+    max-width: 340px;
+    user-select: none;
+    -webkit-user-select: none;
+    display: none;
+    white-space: pre;
+  "></div>
+
   <script>
     function setVhUnit() {
       document.documentElement.style.setProperty("--vh", `${window.innerHeight * 0.01}px`);
@@ -1315,46 +1336,64 @@
       }
     }
 
-    // ---- MOTION HANDLING (AXIS-BASED RAW GYRO SNAP-BACK) ----
+    // ---- DEBUG OVERLAY (keeps peaks) ----
+    const DEBUG = true; // set false to hide overlay
+    const debugEl = document.getElementById("debug");
+
+    let dbg_sessionMaxPeak = 0; // max gyro magnitude OR swing peak seen this session
+    let dbg_lastRingPeak = 0;   // peakAbs that triggered last ring
+
+    function dbgShow() {
+      if (!debugEl) return;
+      debugEl.style.display = DEBUG ? "block" : "none";
+    }
+    dbgShow();
+
+    function fmt(n) {
+      if (!isFinite(n)) return "0";
+      return String(Math.round(n));
+    }
+
+    function dbgRender(state) {
+      if (!DEBUG || !debugEl) return;
+      debugEl.textContent =
+        `GYRO (deg/s)\n` +
+        `x:${fmt(state.ox)}  y:${fmt(state.oy)}  z:${fmt(state.oz)}\n` +
+        `mag:${fmt(state.mag)}  axis:${state.axis}  sign:${state.sign}\n` +
+        `tracking:${state.tracking ? "YES" : "NO"}\n\n` +
+        `peak (this swing): ${fmt(state.swingPeak)}\n` +
+        `last ring peak:   ${fmt(dbg_lastRingPeak)}\n` +
+        `session max peak: ${fmt(dbg_sessionMaxPeak)}\n\n` +
+        `(tap to reset peaks)`;
+    }
+
+    if (debugEl) {
+      debugEl.addEventListener("click", () => {
+        dbg_sessionMaxPeak = 0;
+        dbg_lastRingPeak = 0;
+      });
+    }
+
+    // ---- MOTION HANDLING (INSTANT RAW GYRO SNAP-BACK) ----
     let lastRingTime = 0;
 
-    // “Common” numbers (deg/sec). Tune later if needed.
-    const MIN_INTERVAL_MS = 80;
+    // Common numbers (deg/sec)
+    const MIN_INTERVAL_MS = 120;
 
-    const ARM_AXIS_DPS   = 32;   // easier to start tracking
-    const PEAK_MIN_DPS   = 85;   // less build-up required
-    const PEAK_MAX_DPS   = 500;  // keep intensity reasonable
-    const CROSS_MIN_DPS  = 50;   // easier to trigger on the reversal frame
-    
-    const CALM_AXIS_DPS  = 22;
-    const CALM_MS        = 35;
-    const STABLE_SIGN_MS = 45;
+    const ARM_START_DPS = 60;
+    const PEAK_MIN_DPS  = 140;
+    const PEAK_MAX_DPS  = 600;
+    const CROSS_MIN_DPS = 80;
 
+    const CALM_DPS      = 35;
+    const CALM_MS       = 60;
 
+    // Swing tracking state
     let tracking = false;
     let trackAxis = "x";
     let trackSign = 0;
     let peakAbs = 0;
-
     let calmSinceMs = null;
-    let stableSignSinceMs = null;
-    let lastAxisSign = 0;
-
-    // Map rotationRate → axis vector
-    function getOmegaFromRotationRate(rr) {
-      return {
-        x: rr.beta  || 0,  // pitch
-        y: rr.gamma || 0,  // roll
-        z: rr.alpha || 0   // yaw
-      };
-    }
-
-    function pickDominantAxisByAbs(omega) {
-      const ax = Math.abs(omega.x), ay = Math.abs(omega.y), az = Math.abs(omega.z);
-      if (ax >= ay && ax >= az) return "x";
-      if (ay >= ax && ay >= az) return "y";
-      return "z";
-    }
 
     function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
     function norm(v) {
@@ -1363,39 +1402,39 @@
       return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
 
-    function computeVisualDirFromGyro(omega) {
-      const ax = Math.abs(omega.x), ay = Math.abs(omega.y), az = Math.abs(omega.z);
-      const m = Math.max(ax, ay, az);
-      if (m < 1) return Math.random() < 0.5 ? "left" : "right";
-      if (m === ax) return omega.x > 0 ? "left" : "right";
-      if (m === ay) return omega.y > 0 ? "up" : "down";
-      return omega.z > 0 ? "up" : "down";
+    function pickDominantAxis(v) {
+      const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
+      if (ax >= ay && ax >= az) return "x";
+      if (ay >= ax && ay >= az) return "y";
+      return "z";
     }
 
-    function updateRearmTimers(nowMs, axisAbs, axisSign) {
-      // Calm timer
-      if (axisAbs <= CALM_AXIS_DPS) {
+    function gyroMag(v) {
+      return Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+    }
+
+    function computeVisualDirFromGyro(v) {
+      const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
+      const m = Math.max(ax, ay, az);
+      if (m < 1) return Math.random() < 0.5 ? "left" : "right";
+
+      if (m === ax) return v.x > 0 ? "left" : "right";
+      if (m === ay) return v.y > 0 ? "up" : "down";
+      return v.z > 0 ? "up" : "down";
+    }
+
+    function updateCalm(nowMs, omegaDps) {
+      if (omegaDps <= CALM_DPS) {
         if (calmSinceMs == null) calmSinceMs = nowMs;
       } else {
         calmSinceMs = null;
-      }
-
-      // Stable sign timer
-      if (axisSign !== 0 && axisSign === lastAxisSign) {
-        if (stableSignSinceMs == null) stableSignSinceMs = nowMs;
-      } else {
-        stableSignSinceMs = (axisSign !== 0) ? nowMs : null;
-        lastAxisSign = axisSign;
       }
     }
 
     function isRearmed(nowMs) {
       if (nowMs - lastRingTime < MIN_INTERVAL_MS) return false;
-
-      const calmOk = (calmSinceMs != null) && ((nowMs - calmSinceMs) >= CALM_MS);
-      const stableOk = (stableSignSinceMs != null) && ((nowMs - stableSignSinceMs) >= STABLE_SIGN_MS);
-
-      return calmOk || stableOk;
+      if (calmSinceMs == null) return false;
+      return (nowMs - calmSinceMs) >= CALM_MS;
     }
 
     function handleMotion(event) {
@@ -1409,35 +1448,78 @@
       const rr = event.rotationRate;
       if (!rr) return;
 
-      const omega = getOmegaFromRotationRate(rr);
+      const omega = {
+        x: rr.beta  || 0,  // pitch rate
+        y: rr.gamma || 0,  // roll rate
+        z: rr.alpha || 0   // yaw rate
+      };
 
-      // Rearm uses currently dominant axis each frame
-      const domAxisNow = pickDominantAxisByAbs(omega);
-      const compNow = omega[domAxisNow];
-      const absNow = Math.abs(compNow);
-      const signNow = Math.sign(compNow);
+      const omegaDps = gyroMag(omega);
+      updateCalm(nowMs, omegaDps);
 
-      updateRearmTimers(nowMs, absNow, signNow);
+      // debug: keep a "session max" of gyro magnitude
+      if (omegaDps > dbg_sessionMaxPeak) dbg_sessionMaxPeak = omegaDps;
 
-      // Start tracking
+      // Start tracking only after re-armed and rotation is clearly happening
       if (!tracking) {
-        if (!isRearmed(nowMs)) return;
-        if (absNow < ARM_AXIS_DPS) return;
-        if (signNow === 0) return;
+        if (!isRearmed(nowMs)) {
+          dbgRender({
+            ox: omega.x, oy: omega.y, oz: omega.z,
+            mag: omegaDps,
+            axis: "-", sign: 0,
+            tracking: false,
+            swingPeak: 0
+          });
+          return;
+        }
+        if (omegaDps < ARM_START_DPS) {
+          dbgRender({
+            ox: omega.x, oy: omega.y, oz: omega.z,
+            mag: omegaDps,
+            axis: "-", sign: 0,
+            tracking: false,
+            swingPeak: 0
+          });
+          return;
+        }
+
+        trackAxis = pickDominantAxis(omega);
+        const comp = omega[trackAxis];
+        const s = Math.sign(comp);
+        if (s === 0) {
+          dbgRender({
+            ox: omega.x, oy: omega.y, oz: omega.z,
+            mag: omegaDps,
+            axis: "-", sign: 0,
+            tracking: false,
+            swingPeak: 0
+          });
+          return;
+        }
 
         tracking = true;
-        trackAxis = domAxisNow;
-        trackSign = signNow;
-        peakAbs = absNow;
+        trackSign = s;
+        peakAbs = Math.abs(comp);
+
+        if (peakAbs > dbg_sessionMaxPeak) dbg_sessionMaxPeak = peakAbs;
+
+        dbgRender({
+          ox: omega.x, oy: omega.y, oz: omega.z,
+          mag: omegaDps,
+          axis: trackAxis, sign: trackSign,
+          tracking: true,
+          swingPeak: peakAbs
+        });
         return;
       }
 
-      // Tracking on locked axis
+      // Tracking swing
       const comp = omega[trackAxis];
       const absComp = Math.abs(comp);
       const s = Math.sign(comp);
 
       if (absComp > peakAbs) peakAbs = absComp;
+      if (peakAbs > dbg_sessionMaxPeak) dbg_sessionMaxPeak = peakAbs;
 
       const signFlipped = (s !== 0 && trackSign !== 0 && s === -trackSign);
       const buildOk = (peakAbs >= PEAK_MIN_DPS);
@@ -1445,6 +1527,9 @@
 
       if (signFlipped && buildOk && crossOk && (nowMs - lastRingTime >= MIN_INTERVAL_MS)) {
         lastRingTime = nowMs;
+
+        // debug: capture what actually triggered
+        dbg_lastRingPeak = peakAbs;
 
         const clamped = Math.min(Math.max(peakAbs, PEAK_MIN_DPS), PEAK_MAX_DPS);
         const intensity = (clamped - PEAK_MIN_DPS) / (PEAK_MAX_DPS - PEAK_MIN_DPS);
@@ -1454,7 +1539,6 @@
 
         const faceUpNow = isFaceUpLatched(nowMs);
 
-        // Direction vector for 2-bell mapping & calibration
         const dirN = norm(omega);
         const dir = (dirN.m > 0) ? { x: dirN.x, y: dirN.y, z: dirN.z } : (dualForwardVec || { x: 1, y: 0, z: 0 });
 
@@ -1496,24 +1580,37 @@
           playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
         }
 
-        // Reset tracking immediately after ring (avoid doubles)
+        // After ring: stop tracking and require calm before re-arming.
         tracking = false;
         trackSign = 0;
         peakAbs = 0;
+        calmSinceMs = null;
 
-        // Short rearm barrier without demanding total stillness
-        calmSinceMs = nowMs;
-        stableSignSinceMs = null;
-        lastAxisSign = 0;
+        dbgRender({
+          ox: omega.x, oy: omega.y, oz: omega.z,
+          mag: omegaDps,
+          axis: "-", sign: 0,
+          tracking: false,
+          swingPeak: 0
+        });
         return;
       }
 
-      // If we lose the signal, abandon tracking
-      if (absComp < CALM_AXIS_DPS) {
+      // If the user stops rotating, abandon this swing
+      if (omegaDps < CALM_DPS) {
         tracking = false;
         trackSign = 0;
         peakAbs = 0;
       }
+
+      dbgRender({
+        ox: omega.x, oy: omega.y, oz: omega.z,
+        mag: omegaDps,
+        axis: tracking ? trackAxis : "-",
+        sign: tracking ? trackSign : 0,
+        tracking,
+        swingPeak: tracking ? peakAbs : 0
+      });
     }
 
     function startMotionListening() {
@@ -1521,25 +1618,17 @@
       trackAxis = "x";
       trackSign = 0;
       peakAbs = 0;
-
-      lastRingTime = 0;
       calmSinceMs = performance.now();
-      stableSignSinceMs = null;
-      lastAxisSign = 0;
 
       window.addEventListener("devicemotion", handleMotion, { passive: true });
     }
 
     function stopMotionListening() {
       window.removeEventListener("devicemotion", handleMotion);
-
       tracking = false;
       trackSign = 0;
       peakAbs = 0;
-
       calmSinceMs = null;
-      stableSignSinceMs = null;
-      lastAxisSign = 0;
 
       faceDownTriggeredThisRingWindow = false;
       activeRings.clear();
@@ -1590,7 +1679,6 @@
       stopMotionListening();
       startMotionListening();
 
-      // tap preview
       playBellToRingEl(note, bellRingLeft, 1, null);
     }
 
