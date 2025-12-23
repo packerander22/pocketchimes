@@ -1375,77 +1375,114 @@
 
     function handleMotion(event) {
       if (!currentNote) return;
-
+    
       const nowMs = performance.now();
-
+    
       updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
-
+    
       let acc = event.acceleration;
       if (!acc || (acc.x === null && acc.y === null && acc.z === null)) {
         acc = event.accelerationIncludingGravity;
       }
       if (!acc) return;
-
+    
       const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
       const magnitude = Math.sqrt(ax*ax + ay*ay + az*az);
-
+    
       if (lastMagnitude === null || lastAx === null) {
         lastMagnitude = magnitude;
         lastAx = ax; lastAy = ay; lastAz = az;
         return;
       }
-
+    
       const jx = ax - lastAx, jy = ay - lastAy, jz = az - lastAz;
-
+    
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
-
-      // --- Build-up tracking (100ms arming gate) ---
-      // Only count "build" while magnitude is increasing meaningfully.
-      if (!inSwing && signedDelta > RESET_DELTA) {
-        if (buildFrames === 0) buildStartMs = nowMs;
-        buildFrames++;
-        buildPeak = Math.max(buildPeak, absDelta);
-      } else if (absDelta < RESET_DELTA) {
-        // fully idle again → reset build window
+    
+      // --- thresholds ---
+      const MIN_INTERVAL   = 200;
+    
+      // Minimum to count as a real "ring-strength" buildup
+      const DELTA_RING_MIN = 5.0;  // <-- your requested minimum
+      const DELTA_RING_MAX = 10.0;
+      const RESET_DELTA    = 1.5;
+    
+      // --- build tracking (more forgiving than before) ---
+      // We track a short build window (up to ~180ms). If we see enough "peak" in that window,
+      // we allow the reversal ring even if the buildup was quick.
+      const BUILD_WINDOW_MS = 180;
+      const BUILD_START_MIN_POS_DELTA = 0.8; // was too strict before (1.5). Lower = easier to arm.
+    
+      // Extra trigger: fast deceleration can ring even if build was short
+      // (This supports your "decelerates quickly enough" request.)
+      const FAST_DECEL_RING_DELTA = 6.0; // tune: larger = stricter
+    
+      // persistent build state
+      if (typeof handleMotion._buildStartMs !== "number") {
+        handleMotion._buildStartMs = 0;
+        handleMotion._buildPeak = 0;
+      }
+    
+      function resetBuild() {
+        handleMotion._buildStartMs = 0;
+        handleMotion._buildPeak = 0;
+      }
+    
+      // Start/continue build window on meaningful positive delta
+      if (!inSwing && signedDelta > BUILD_START_MIN_POS_DELTA) {
+        if (handleMotion._buildStartMs === 0) handleMotion._buildStartMs = nowMs;
+        handleMotion._buildPeak = Math.max(handleMotion._buildPeak, absDelta);
+      }
+    
+      // If we go fully idle again, clear build
+      if (absDelta < RESET_DELTA) {
+        inSwing = false;
+        // Only reset if we aren't in a build window anymore
+        if (handleMotion._buildStartMs && (nowMs - handleMotion._buildStartMs) > BUILD_WINDOW_MS) {
+          resetBuild();
+        }
+      }
+    
+      // Auto-expire build window
+      if (handleMotion._buildStartMs && (nowMs - handleMotion._buildStartMs) > BUILD_WINDOW_MS) {
         resetBuild();
       }
-
-      const armed =
-        buildFrames >= BUILD_MIN_FRAMES &&
-        buildStartMs > 0 &&
-        (nowMs - buildStartMs) >= BUILD_MIN_MS &&
-        buildPeak >= DELTA_RING_MIN;
-
-      if (absDelta < RESET_DELTA) inSwing = false;
-
+    
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
       const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
       const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
       const justReversed = wasBuilding && changedDirection;
-
-      // Gate ALL strikes behind "armed" to stop false rings from stationary starts.
-      if (armed && !inSwing && justReversed && nowMs - lastRingTime > MIN_INTERVAL) {
+    
+      // Arming condition: either we had a strong-enough build peak recently, OR we decelerate hard.
+      const recentBuildStrongEnough =
+        handleMotion._buildStartMs !== 0 && handleMotion._buildPeak >= DELTA_RING_MIN;
+    
+      const fastDecel = signedDelta < -FAST_DECEL_RING_DELTA;
+    
+      const allowRing = (recentBuildStrongEnough || fastDecel);
+    
+      if (allowRing && !inSwing && justReversed && nowMs - lastRingTime > MIN_INTERVAL) {
         const peak = Math.abs(lastDelta);
         if (peak >= DELTA_RING_MIN) {
           inSwing = true;
           lastRingTime = nowMs;
-
+    
           const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
           const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
           const visualDir = computeVisualDirFromJerk(jx, jy, jz);
-
+    
           ensureWakeLock();
-
+    
           const faceUpNow = isFaceUpLatched(nowMs);
-
+    
           // Jerk-only direction for bell selection:
+          // use opposite jerk (often aligns with "where swing was going")
           const oppJerk = { x: -jx, y: -jy, z: -jz };
           const jN = norm(oppJerk);
-
-          // Small jerk improvement: ignore weak/ambiguous jerk direction and fall back to last known mapping
+    
           const JERK_DIR_MIN = 0.35; // tune if needed
           let dir;
           if (jN.m < JERK_DIR_MIN && dualForwardVec) {
@@ -1455,17 +1492,15 @@
           } else {
             dir = dualForwardVec || { x: 1, y: 0, z: 0 };
           }
-
+    
           if (secondNote) {
             if (faceUpNow) {
-              // face-up ALWAYS rings both
               if (!dualCalibrating) {
                 playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
                 playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
               }
             } else {
               if (dualCalibrating) {
-                // 3 consecutive in same direction (jerk-based)
                 if (!dualForwardVec) {
                   dualForwardVec = dir;
                   dualCalibCount = 1;
@@ -1477,9 +1512,9 @@
                     dualCalibCount = 1;
                   }
                 }
-
+    
                 calibProgress.textContent = String(dualCalibCount);
-
+    
                 if (dualCalibCount >= 3) {
                   const nf = norm(dualForwardVec);
                   dualForwardVec = (nf.m > 0) ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
@@ -1488,7 +1523,7 @@
               } else {
                 const f = dualForwardVec ? dualForwardVec : { x: 1, y: 0, z: 0 };
                 const s = dot(dir, f);
-
+    
                 if (s >= 0) playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
                 else playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
               }
@@ -1496,12 +1531,12 @@
           } else {
             playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
           }
-
-          // Reset build window after a successful strike so the next ring must “earn” it again.
+    
+          // After a ring, clear build so the next one must earn it again
           resetBuild();
         }
       }
-
+    
       lastMagnitude = magnitude;
       lastDelta = signedDelta;
       lastAx = ax; lastAy = ay; lastAz = az;
