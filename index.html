@@ -1248,7 +1248,7 @@
     // Android Chrome does, and this is the "biggest" practical bump pattern.
     function bigHapticBump() {
       try {
-        if (navigator.vibrate) navigator.vibrate([40, 18, 55]);
+        if (navigator.vibrate) navigator.vibrate([40, 20, 60]);
       } catch (e) {}
     }
 
@@ -1326,39 +1326,42 @@
     // ---- MOTION HANDLING ----
     let lastRingTime = 0;
 
-    const MIN_INTERVAL   = 200;
+    // --- "common number" constants ---
+    const MIN_INTERVAL   = 150;
 
     // Your requested minimum threshold = 5
-    const DELTA_RING_MIN = 5.0;
+    const DELTA_RING_MIN = 5;
 
-    const DELTA_RING_MAX = 10.0;
-    const RESET_DELTA    = 1.5;
+    const DELTA_RING_MAX = 10;
+
+    // more stable than 1.5
+    const RESET_DELTA    = 2;
+
+    // Require "under reset" briefly to truly end a swing
+    const RESET_HOLD_MS  = 50;
+
+    // Goal window
+    const WINDOW_MS      = 100;
+
+    // Conditions (common numbers)
+    const BUILD_MIN      = DELTA_RING_MIN; // build-up requirement uses same minimum
+    const DECEL_MIN      = 2;              // "clear stop"
+    const JERK_MIN       = 1;              // "clear opposite snap"
 
     let inSwing = false;
     let lastMagnitude = null;
     let lastDelta = 0;
     let lastAx = null, lastAy = null, lastAz = null;
 
-    // --- 100ms window logic (better for big arm swings) ---
-    const WINDOW_MS = 100;
     const samples = []; // { t, signedDelta, jerkMag }
-
-    // Conditions:
-    // - ring on opposite-jerk OR fast decel
-    // - but ONLY if build-up in the last 100ms was big enough
-    const BUILD_MIN = DELTA_RING_MIN; // build-up requirement uses same minimum
-    const DECEL_MIN = 2.6;            // tune: more strict => fewer false positives
-    const JERK_MIN  = 1.25;           // tune: lower => wrist snaps trigger more easily
-
-    // Require "under reset" for ~100ms to truly end a swing (prevents slow-swing jitter resets)
     let underResetSinceMs = null;
 
     function computeVisualDirFromJerk(jx, jy, jz) {
       const absX = Math.abs(jx), absY = Math.abs(jy), absZ = Math.abs(jz);
       const maxComp = Math.max(absX, absY, absZ);
-      const MIN_JERK = 0.3;
+      const MIN_JERK_VIS = 0.3;
 
-      if (maxComp < MIN_JERK) return Math.random() < 0.5 ? "left" : "right";
+      if (maxComp < MIN_JERK_VIS) return Math.random() < 0.5 ? "left" : "right";
       if (maxComp === absX) return jx > 0 ? "left" : "right";
       if (maxComp === absY) return jy > 0 ? "up" : "down";
       return jz > 0 ? "up" : "down";
@@ -1416,10 +1419,10 @@
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
 
-      // swing-end reset based on time under threshold (more stable for big smooth swings)
+      // swing-end reset based on time under threshold
       if (absDelta < RESET_DELTA) {
         if (underResetSinceMs == null) underResetSinceMs = nowMs;
-        if ((nowMs - underResetSinceMs) >= WINDOW_MS) inSwing = false;
+        if ((nowMs - underResetSinceMs) >= RESET_HOLD_MS) inSwing = false;
       } else {
         underResetSinceMs = null;
       }
@@ -1428,11 +1431,11 @@
       const oppJerk = { x: -jx, y: -jy, z: -jz };
       const jerkMag = Math.sqrt(oppJerk.x*oppJerk.x + oppJerk.y*oppJerk.y + oppJerk.z*oppJerk.z);
 
-      // update 100ms window
+      // update window
       samples.push({ t: nowMs, signedDelta, jerkMag });
       pruneSamples(nowMs);
 
-      // Decide trigger on either:
+      // Trigger on either:
       // (A) strong opposite jerk, OR
       // (B) strong deceleration
       // BUT only if recent build-up was big enough (prevents "from still" triggers)
@@ -1445,11 +1448,10 @@
       const canRing = buildOk && (decelOk || jerkOk);
 
       if (!inSwing && canRing && (nowMs - lastRingTime > MIN_INTERVAL)) {
-        // Ring occurs here
         inSwing = true;
         lastRingTime = nowMs;
 
-        // intensity uses buildPeak (feels better for big swings than a single-frame lastDelta)
+        // intensity uses buildPeak (feels better for big swings)
         const clamped = Math.min(Math.max(buildPeak, DELTA_RING_MIN), DELTA_RING_MAX);
         const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
         const visualDir = computeVisualDirFromJerk(jx, jy, jz);
@@ -1461,8 +1463,7 @@
         // Jerk-only direction for bell selection:
         const jN = norm(oppJerk);
 
-        // Small jerk improvement: ignore weak/ambiguous jerk direction and fall back to last known mapping
-        const JERK_DIR_MIN = 0.35; // tune if needed
+        const JERK_DIR_MIN = 0.35;
         let dir;
         if (jN.m < JERK_DIR_MIN && dualForwardVec) {
           dir = dualForwardVec;
@@ -1474,7 +1475,7 @@
 
         if (secondNote) {
           if (faceUpNow) {
-            // face-up ALWAYS rings both, but ONLY when calibration is done
+            // face-up ALWAYS rings both, but NOT during calibration
             if (!dualCalibrating) {
               playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
               playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
