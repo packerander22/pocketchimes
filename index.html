@@ -1292,6 +1292,7 @@
 
       lastBellPlayMs = performance.now();
 
+      // visuals
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
@@ -1312,32 +1313,7 @@
       }
     }
 
-    // ---- MOTION HANDLING (SWING-GATED GYRO SNAP-BACK) ----
-    let lastRingTime = 0;
-
-    // Tuning:
-    // - SWING_ACCEL_MIN: how much *linear* acceleration we need to consider it a real swing
-    // - ARM_START / PEAK_MIN / CROSS_MIN: gyro thresholds (now much lower, because of swing gating)
-    // - CALM_*: how we re-arm between rings
-    const MIN_INTERVAL_MS = 70;
-
-    const SWING_ACCEL_MIN = 2.8;    // m/s^2 dynamic accel needed to start a swing (~0.28g)
-
-    const ARM_START_DPS = 25;       // start tracking a swing once rotation is clearly happening
-    const PEAK_MIN_DPS  = 100;      // build-up requirement (needs a real "wind-up")
-    const PEAK_MAX_DPS  = 1400;     // clamp for intensity mapping
-    const CROSS_MIN_DPS = 40;       // snap-back must be at least this strong on reversal frame
-
-    const CALM_DPS      = 40;       // gyro below this counts as "calm"
-    const CALM_MS       = 40;       // how long it must be calm to re-arm
-
-    // Swing tracking state
-    let tracking = false;
-    let trackAxis = "x";
-    let trackSign = 0;
-    let peakAbs = 0;
-    let calmSinceMs = null;
-
+    // ---- VECTOR HELPERS ----
     function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
     function norm(v) {
       const m = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
@@ -1345,215 +1321,204 @@
       return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
 
-    function pickDominantAxis(v) {
-      const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
-      if (ax >= ay && ax >= az) return "x";
-      if (ay >= ax && ay >= az) return "y";
-      return "z";
-    }
-
-    function gyroMag(v) {
-      return Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
-    }
-
-    function computeVisualDirFromGyro(v) {
+    function computeVisualDirFromAccel(v) {
       const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
       const m = Math.max(ax, ay, az);
-      if (m < 1) return Math.random() < 0.5 ? "left" : "right";
+      if (m < 0.2) return Math.random() < 0.5 ? "left" : "right";
 
-      if (m === ax) return v.x > 0 ? "left" : "right";
+      if (m === ax) return v.x > 0 ? "right" : "left";
       if (m === ay) return v.y > 0 ? "up" : "down";
       return v.z > 0 ? "up" : "down";
     }
 
-    function updateCalm(nowMs, omegaDps) {
-      if (omegaDps <= CALM_DPS) {
-        if (calmSinceMs == null) calmSinceMs = nowMs;
-      } else {
-        calmSinceMs = null;
-      }
-    }
+    // ---- MOTION HANDLING (ACCEL SNAP-BACK + DIRECTION AVERAGE) ----
+    let lastRingTime = 0;
 
-    function isRearmed(nowMs) {
-      if (nowMs - lastRingTime < MIN_INTERVAL_MS) return false;
-      if (calmSinceMs == null) return false;
-      return (nowMs - calmSinceMs) >= CALM_MS;
-    }
+    const MIN_INTERVAL_MS = 140;    // minimum time between rings
+
+    const BUILD_MAG_MIN  = 2.5;     // must build to at least this (m/s^2) before a reversal can ring
+    const BUILD_MAG_MAX  = 12.0;    // clamp for intensity
+    const SNAP_MAG_MIN   = 2.0;     // snap-back frame magnitude must be at least this
+    const SNAP_ANGLE_COS = -0.15;   // cos(theta) <= this ⇒ clear direction reversal (~>100°)
+
+    const DIR_HISTORY_MAX = 6;      // how many pre-snap frames to average
+
+    let swingArmed = false;
+    let peakMag = 0;
+    let dirHistory = [];
+
+    let lastAx = null, lastAy = null, lastAz = null, lastMag = null;
 
     function handleMotion(event) {
       if (!currentNote) return;
 
       const nowMs = performance.now();
 
-      // Keep face-up latch / mute logic (uses accel + gravity)
       updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
 
-      // --- RAW GYRO ---
-      const rr = event.rotationRate;
-      if (!rr) return;
-
-      const omega = {
-        x: rr.beta  || 0,
-        y: rr.gamma || 0,
-        z: rr.alpha || 0
-      };
-
-      const omegaDps = gyroMag(omega);
-      updateCalm(nowMs, omegaDps);
-
-      // --- SWING GATING (approx linear acceleration) ---
-      // Use accelerationIncludingGravity to approximate dynamic accel magnitude
-      let accIG = event.acceleration;
-      if (!accIG || (accIG.x == null && accIG.y == null && accIG.z == null)) {
-        accIG = event.accelerationIncludingGravity;
+      // Use acceleration without gravity when available, otherwise fall back
+      let acc = event.acceleration;
+      if (!acc || (acc.x == null && acc.y == null && acc.z == null)) {
+        acc = event.accelerationIncludingGravity;
       }
+      if (!acc) return;
 
-      let swingAccelMag = 0;
-      if (accIG) {
-        const ax = accIG.x || 0;
-        const ay = accIG.y || 0;
-        const az = accIG.z || 0;
-        const mag = Math.sqrt(ax*ax + ay*ay + az*az);
-        const g = 9.81; // m/s^2
-        swingAccelMag = Math.abs(mag - g); // crude high-pass: "dynamic" part above gravity
-      }
+      const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
+      const mag = Math.sqrt(ax*ax + ay*ay + az*az);
+      if (!isFinite(mag)) return;
 
-      // Only allow starting a swing if the *linear* swing acceleration is big enough.
-      // This blocks "rotate in place" (gyro without real swing) from ever arming.
-      if (!tracking && swingAccelMag < SWING_ACCEL_MIN) {
+      // First frame bootstrap
+      if (lastMag == null) {
+        lastAx = ax; lastAy = ay; lastAz = az; lastMag = mag;
         return;
       }
 
-      // --- SWING STATE MACHINE (gyro-based snap-back) ---
+      const dotPrev = ax*lastAx + ay*lastAy + az*lastAz;
+      const denom = (mag * lastMag);
+      const cosTheta = denom > 1e-6 ? (dotPrev / denom) : 1.0;
 
-      // Not tracking yet: see if we should arm a new swing
-      if (!tracking) {
-        if (!isRearmed(nowMs)) return;
-        if (omegaDps < ARM_START_DPS) return;
+      // ---- SWING BUILD-UP ----
+      if (!swingArmed) {
+        // Only arm if we've clearly started moving and we're past min interval
+        if (mag >= BUILD_MAG_MIN && (nowMs - lastRingTime >= MIN_INTERVAL_MS)) {
+          swingArmed = true;
+          peakMag = mag;
+          dirHistory.length = 0;
 
-        trackAxis = pickDominantAxis(omega);
-        const comp = omega[trackAxis];
-        const s = Math.sign(comp);
-        if (s === 0) return;
-
-        tracking = true;
-        trackSign = s;
-        peakAbs = Math.abs(comp);
-        return;
-      }
-
-      // Already tracking a swing
-      let comp = omega[trackAxis];
-      let absComp = Math.abs(comp);
-      let s = Math.sign(comp);
-
-      // Allow axis re-lock if another axis clearly dominates (helps follow real swing path)
-      const newAxis = pickDominantAxis(omega);
-      if (newAxis !== trackAxis) {
-        const oldDomAbs = absComp;
-        const newDomAbs = Math.abs(omega[newAxis]);
-        if (newDomAbs > oldDomAbs * 1.15) {
-          trackAxis = newAxis;
-          comp = omega[trackAxis];
-          absComp = Math.abs(comp);
-          const s2 = Math.sign(comp);
-          if (s2 !== 0) {
-            if (trackSign === 0) trackSign = s2;
-            s = s2;
+          const inv = (mag > 1e-6) ? 1 / mag : 0;
+          if (inv > 0) {
+            dirHistory.push({ x: ax * inv, y: ay * inv, z: az * inv });
           }
         }
-      }
+      } else {
+        // Update peak magnitude while in the same general direction
+        if (mag > peakMag) peakMag = mag;
 
-      if (absComp > peakAbs) peakAbs = absComp;
+        // While direction hasn't flipped, keep adding to pre-snap history
+        if (cosTheta > -0.2 && mag > 0.3) {
+          const inv = 1 / mag;
+          dirHistory.push({ x: ax * inv, y: ay * inv, z: az * inv });
+          if (dirHistory.length > DIR_HISTORY_MAX) dirHistory.shift();
+        }
 
-      // Instant snap-back condition:
-      const signFlipped = (s !== 0 && trackSign !== 0 && s === -trackSign);
-      const buildOk = (peakAbs >= PEAK_MIN_DPS);
-      const crossOk = (absComp >= CROSS_MIN_DPS);
+        const reversed = (cosTheta <= SNAP_ANGLE_COS);
+        const canRing =
+          reversed &&
+          peakMag >= BUILD_MAG_MIN &&
+          mag >= SNAP_MAG_MIN &&
+          (nowMs - lastRingTime >= MIN_INTERVAL_MS);
 
-      if (signFlipped && buildOk && crossOk && (nowMs - lastRingTime >= MIN_INTERVAL_MS)) {
-        lastRingTime = nowMs;
+        if (canRing) {
+          lastRingTime = nowMs;
 
-        const clamped = Math.min(Math.max(peakAbs, PEAK_MIN_DPS), PEAK_MAX_DPS);
-        const intensity = (clamped - PEAK_MIN_DPS) / (PEAK_MAX_DPS - PEAK_MIN_DPS);
-        const visualDir = computeVisualDirFromGyro(omega);
+          // --- Direction: average pre-snap + snap direction ---
+          let avgX = 0, avgY = 0, avgZ = 0;
+          for (const d of dirHistory) {
+            avgX += d.x; avgY += d.y; avgZ += d.z;
+          }
+          const preDir = dirHistory.length
+            ? norm({ x: avgX, y: avgY, z: avgZ })
+            : { x: 0, y: 0, z: 0, m: 0 };
 
-        ensureWakeLock();
+          const snapDirN = norm({ x: ax, y: ay, z: az });
 
-        const faceUpNow = isFaceUpLatched(nowMs);
-
-        const dirN = norm(omega);
-        const dir = (dirN.m > 0) ? { x: dirN.x, y: dirN.y, z: dirN.z } : (dualForwardVec || { x: 1, y: 0, z: 0 });
-
-        if (secondNote) {
-          if (faceUpNow) {
-            if (!dualCalibrating) {
-              playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
-              playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
-            }
+          let combined;
+          if (!preDir.m && !snapDirN.m) {
+            combined = dualForwardVec || { x: 1, y: 0, z: 0, m: 1 };
           } else {
-            if (dualCalibrating) {
-              if (!dualForwardVec) {
-                dualForwardVec = dir;
-                dualCalibCount = 1;
-              } else {
-                const sdot = dot(dir, dualForwardVec);
-                if (sdot >= 0) dualCalibCount++;
-                else {
-                  dualForwardVec = dir;
-                  dualCalibCount = 1;
-                }
-              }
+            combined = norm({
+              x: preDir.x + snapDirN.x,
+              y: preDir.y + snapDirN.y,
+              z: preDir.z + snapDirN.z
+            });
+            if (!combined.m) {
+              combined = snapDirN.m ? snapDirN : preDir;
+            }
+          }
 
-              calibProgress.textContent = String(dualCalibCount);
+          const clamped = Math.min(Math.max(peakMag, BUILD_MAG_MIN), BUILD_MAG_MAX);
+          const intensity = (clamped - BUILD_MAG_MIN) / (BUILD_MAG_MAX - BUILD_MAG_MIN);
+          const visualDir = computeVisualDirFromAccel(combined);
 
-              if (dualCalibCount >= 3) {
-                const nf = norm(dualForwardVec);
-                dualForwardVec = (nf.m > 0) ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
-                finishDualCalibration();
+          ensureWakeLock();
+          const faceUpNow = isFaceUpLatched(nowMs);
+          const dirVec = { x: combined.x, y: combined.y, z: combined.z };
+
+          if (secondNote) {
+            if (faceUpNow) {
+              if (!dualCalibrating) {
+                playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+                playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
               }
             } else {
-              const f = dualForwardVec ? dualForwardVec : { x: 1, y: 0, z: 0 };
-              const sdot = dot(dir, f);
-              if (sdot >= 0) playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
-              else playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+              if (dualCalibrating) {
+                // Calibration: no sound, just build up dualForwardVec
+                if (!dualForwardVec) {
+                  dualForwardVec = dirVec;
+                  dualCalibCount = 1;
+                } else {
+                  const sdot = dot(dirVec, dualForwardVec);
+                  if (sdot >= 0) dualCalibCount++;
+                  else {
+                    dualForwardVec = dirVec;
+                    dualCalibCount = 1;
+                  }
+                }
+
+                calibProgress.textContent = String(dualCalibCount);
+
+                if (dualCalibCount >= 3) {
+                  const nf = norm(dualForwardVec);
+                  dualForwardVec = nf.m > 0 ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
+                  finishDualCalibration();
+                }
+              } else {
+                const f = dualForwardVec ? dualForwardVec : { x: 1, y: 0, z: 0 };
+                const sdot = dot(dirVec, f);
+
+                if (sdot >= 0) playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+                else playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+              }
             }
+          } else {
+            playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
           }
-        } else {
-          playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+
+          // Reset swing state, but keep last vectors for next detection
+          swingArmed = false;
+          peakMag = 0;
+          dirHistory.length = 0;
         }
 
-        tracking = false;
-        trackSign = 0;
-        peakAbs = 0;
-        calmSinceMs = null;
-        return;
+        // If motion dies out with no snap, abandon this swing
+        if (!reversed && mag < 0.8 && peakMag > 0) {
+          swingArmed = false;
+          peakMag = 0;
+          dirHistory.length = 0;
+        }
       }
 
-      // If user stops rotating (gyro small), abandon this swing
-      if (omegaDps < CALM_DPS) {
-        tracking = false;
-        trackSign = 0;
-        peakAbs = 0;
-      }
+      lastAx = ax; lastAy = ay; lastAz = az; lastMag = mag;
     }
 
     function startMotionListening() {
-      tracking = false;
-      trackAxis = "x";
-      trackSign = 0;
-      peakAbs = 0;
-      calmSinceMs = performance.now();
+      swingArmed = false;
+      peakMag = 0;
+      dirHistory.length = 0;
+      lastAx = lastAy = lastAz = null;
+      lastMag = null;
+
       window.addEventListener("devicemotion", handleMotion, { passive: true });
     }
 
     function stopMotionListening() {
       window.removeEventListener("devicemotion", handleMotion);
-      tracking = false;
-      trackSign = 0;
-      peakAbs = 0;
-      calmSinceMs = null;
+      swingArmed = false;
+      peakMag = 0;
+      dirHistory.length = 0;
+      lastAx = lastAy = lastAz = null;
+      lastMag = null;
 
       faceDownTriggeredThisRingWindow = false;
       activeRings.clear();
