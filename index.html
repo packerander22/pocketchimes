@@ -462,7 +462,7 @@
       height: 22px;
       border-radius: 999px;
       background: radial-gradient(circle at 30% 25%,
-        var(--thumb-silver-1) 0,
+        var(--thumb-silver-1) 0%,
         var(--thumb-silver-2) 45%,
         var(--thumb-silver-3) 100%);
       border: 1px solid var(--thumb-stroke);
@@ -902,11 +902,12 @@
     const CALIB_NEAR_FLAT_COS = Math.cos((55 * Math.PI) / 180);
     const CALIB_GRAV_DELTA_MAX = 0.30;
 
-    // ---- NEW FACE-UP WINDOW (100 ms) ----
-    const FACEUP_WINDOW_MS = 100;
-    const FACEUP_MAJORITY_RATIO = 0.5;
-    const FACEUP_ENTER_COS = -Math.cos((FACE_DOWN_MAX_TILT_DEG * Math.PI) / 180);
-    let faceUpWindow = []; // { t, up }
+    let faceUpLatchedUntilMs = 0;
+    const FACEUP_LATCH_HOLD_MS = 320;
+    const FACE_UP_MAX_TILT_DEG = FACE_DOWN_MAX_TILT_DEG;
+    const FACEUP_ENTER_COS = -Math.cos((FACE_UP_MAX_TILT_DEG * Math.PI) / 180);
+    const FACEUP_EXIT_COS  = -Math.cos(((FACE_UP_MAX_TILT_DEG + 10) * Math.PI) / 180);
+    let faceUpState = false;
 
     function getAccelMag(a) {
       if (!a) return Infinity;
@@ -1004,32 +1005,26 @@
       return (gzNorm / gmag); // +1 = down, -1 = up
     }
 
-    // NEW: sliding window for face-up in last 100 ms
-    function updateFaceUpWindow(event, nowMs) {
+    function updateFaceUpLatch(event, nowMs) {
       const cosToDown = computeCosToDownFromEvent(event);
       if (cosToDown == null) return;
 
-      const isFaceUp = (cosToDown <= FACEUP_ENTER_COS);
-      faceUpWindow.push({ t: nowMs, up: isFaceUp });
-
-      const cutoff = nowMs - FACEUP_WINDOW_MS;
-      while (faceUpWindow.length && faceUpWindow[0].t < cutoff) {
-        faceUpWindow.shift();
+      if (!faceUpState) {
+        if (cosToDown <= FACEUP_ENTER_COS) {
+          faceUpState = true;
+          faceUpLatchedUntilMs = nowMs + FACEUP_LATCH_HOLD_MS;
+        }
+      } else {
+        if (cosToDown <= FACEUP_EXIT_COS) {
+          faceUpLatchedUntilMs = nowMs + FACEUP_LATCH_HOLD_MS;
+        } else if (nowMs > faceUpLatchedUntilMs) {
+          faceUpState = false;
+        }
       }
     }
 
-    function faceUpMajorityInWindow(nowMs) {
-      const cutoff = nowMs - FACEUP_WINDOW_MS;
-      let total = 0;
-      let upCount = 0;
-
-      for (const s of faceUpWindow) {
-        if (s.t < cutoff) continue;
-        total++;
-        if (s.up) upCount++;
-      }
-      if (total === 0) return false;
-      return (upCount / total) >= FACEUP_MAJORITY_RATIO;
+    function isFaceUpLatched(nowMs) {
+      return faceUpState && nowMs <= faceUpLatchedUntilMs;
     }
 
     function checkFaceDownOnly(event) {
@@ -1039,6 +1034,7 @@
       }
 
       if (performance.now() - lastBellPlayMs < TURN_MUTE_LOCKOUT_MS) return;
+
       if (faceDownTriggeredThisRingWindow) return;
       if (!faceDownZSign) return;
 
@@ -1297,7 +1293,6 @@
 
       lastBellPlayMs = performance.now();
 
-      // visuals
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
@@ -1318,7 +1313,7 @@
       }
     }
 
-    // ---- MOTION HANDLING (gyro snap-back) ----
+    // ---- MOTION HANDLING (INSTANT RAW GYRO SNAP-BACK) ----
     let lastRingTime = 0;
 
     const MIN_INTERVAL_MS = 120;
@@ -1384,10 +1379,7 @@
 
       const nowMs = performance.now();
 
-      // Update face-up window based on orientation in this frame
-      updateFaceUpWindow(event, nowMs);
-
-      // Face-down mute logic (uses same calibration)
+      updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
 
       const rr = event.rotationRate;
@@ -1409,7 +1401,6 @@
         trackAxis = pickDominantAxis(omega);
         const comp = omega[trackAxis];
         const s = Math.sign(comp);
-
         if (s === 0) return;
 
         tracking = true;
@@ -1437,16 +1428,13 @@
 
         ensureWakeLock();
 
-        // NEW: decide if we were face-up most of the last 100 ms
-        const faceUpWindowMajor = faceUpMajorityInWindow(nowMs);
+        const faceUpNow = isFaceUpLatched(nowMs);
 
-        // Direction vector for dual-bell mapping:
         const dirN = norm(omega);
         const dir = (dirN.m > 0) ? { x: dirN.x, y: dirN.y, z: dirN.z } : (dualForwardVec || { x: 1, y: 0, z: 0 });
 
         if (secondNote) {
-          if (faceUpWindowMajor) {
-            // Face-up majority in last 100ms => always ring BOTH (unless calibrating)
+          if (faceUpNow) {
             if (!dualCalibrating) {
               playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
               playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
@@ -1480,7 +1468,6 @@
             }
           }
         } else {
-          // Single bell
           playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
         }
 
@@ -1504,8 +1491,6 @@
       trackSign = 0;
       peakAbs = 0;
       calmSinceMs = performance.now();
-      faceUpWindow = []; // reset face-up history
-
       window.addEventListener("devicemotion", handleMotion, { passive: true });
     }
 
@@ -1518,7 +1503,6 @@
 
       faceDownTriggeredThisRingWindow = false;
       activeRings.clear();
-      faceUpWindow = [];
     }
 
     // ---- MOTION PERMISSION (iOS) ----
@@ -1610,7 +1594,6 @@
       showPlayScreen();
     });
 
-    // Calibration info / skip gating
     calibInfoBtn.addEventListener("click", () => {
       alert(
         "If you can’t swing your device, you can skip calibration.\n\n" +
@@ -1625,7 +1608,6 @@
       skipDualCalibration();
     });
 
-    // Tap-to-ring (BLOCKED during dual calibration)
     playNoteLeft.addEventListener("click", () => {
       if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
@@ -1655,7 +1637,6 @@
       if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
-    // Build note grid
     function initNoteButtons() {
       NOTES.forEach((n) => {
         const btn = document.createElement("button");
