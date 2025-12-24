@@ -518,36 +518,12 @@
       opacity: 0.92;
     }
 
-    /* --- Debug overlay --- */
-    .debug-panel {
-      position: fixed;
-      left: 0.85rem;
-      right: 0.85rem;
-      bottom: calc(70px + env(safe-area-inset-bottom));
-      z-index: 80;
-      display: none;
-      padding: 0.7rem 0.8rem;
-      border-radius: 1.1rem;
-      background: rgba(2,6,23,0.62);
-      border: 1px solid rgba(248,250,252,0.14);
-      color: rgba(248,250,252,0.95);
-      text-align: left;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      font-size: 0.78rem;
-      line-height: 1.35;
-      backdrop-filter: blur(8px);
-      pointer-events: none;
-      white-space: pre;
-    }
-    .debug-panel.active { display: block; }
-
     @media (orientation: landscape) {
       .global-logo { top: 0.6rem; width: 78px; }
       .play-note-label { font-size: 2.6rem; }
       .hint-text { margin-bottom: 0.4rem; }
       .play-screen { padding-bottom: calc(1.2rem + 96px); }
       .dual-pane { min-height: 240px; grid-template-rows: 4.2rem 160px auto; }
-      .debug-panel { bottom: calc(56px + env(safe-area-inset-bottom)); }
     }
 
     @media (max-width: 400px) {
@@ -662,8 +638,6 @@
     </div>
   </div>
 
-  <div class="debug-panel" id="debug-panel"></div>
-
   <script>
     function setVhUnit() {
       document.documentElement.style.setProperty("--vh", `${window.innerHeight * 0.01}px`);
@@ -767,8 +741,6 @@
     const sustainWrapper    = document.getElementById("sustain-wrapper");
     const sustainSlider     = document.getElementById("sustain-slider");
     const sustainValueLabel = document.getElementById("sustain-value-label");
-
-    const debugPanel = document.getElementById("debug-panel");
 
     // ---- AUDIO ----
     let audioCtx = null;
@@ -1222,7 +1194,6 @@
       noteScreen.style.display = "block";
 
       sustainWrapper.classList.remove("active");
-      debugPanel.classList.remove("active");
 
       addModeBack.classList.toggle("active", mode === "secondary");
 
@@ -1235,7 +1206,6 @@
       playScreen.classList.add("active");
 
       sustainWrapper.classList.add("active");
-      debugPanel.classList.add("active");
 
       topRightStack.classList.add("active");
       addModeBack.classList.remove("active");
@@ -1266,8 +1236,6 @@
     }
 
     // ---- HAPTIC (best available on web) ----
-    // NOTE: iOS Safari/PWA generally does NOT support vibration.
-    // Android Chrome does.
     function bigHapticBump() {
       try {
         if (navigator.vibrate) navigator.vibrate([40, 18, 55]);
@@ -1324,7 +1292,6 @@
 
       lastBellPlayMs = performance.now();
 
-      // visuals
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
@@ -1345,41 +1312,31 @@
       }
     }
 
-    // ---- MOTION HANDLING (EASIER RAW GYRO SNAP-BACK + PEAK DEBUG) ----
+    // ---- MOTION HANDLING (SWING-GATED GYRO SNAP-BACK) ----
     let lastRingTime = 0;
 
-    // Make it MUCH easier to ring:
-    // - Track sooner
-    // - Lower peak requirement
-    // - Lower reversal-frame requirement
-    // - Re-arm faster so repeated ringing works
-    const MIN_INTERVAL_MS = 50;   // faster repeat rings
+    // Tuning:
+    // - SWING_ACCEL_MIN: how much *linear* acceleration we need to consider it a real swing
+    // - ARM_START / PEAK_MIN / CROSS_MIN: gyro thresholds (now much lower, because of swing gating)
+    // - CALM_*: how we re-arm between rings
+    const MIN_INTERVAL_MS = 70;
 
-    const ARM_START_DPS = 35;     // start tracking sooner
-    const PEAK_MIN_DPS  = 180;    // easier build requirement (was 250)
-    const PEAK_MAX_DPS  = 1400;   // keep intensity scale reasonable for your peaks
-    
-    const CROSS_MIN_DPS = 55;     // easier snap-back crossing (was 80)
-    
-    const REARM_DPS = 260;        // easier/faster re-arm (was 200)
-    const REARM_MS  = 12;         // shorter settle time (was 20)
+    const SWING_ACCEL_MIN = 2.8;    // m/s^2 dynamic accel needed to start a swing (~0.28g)
 
+    const ARM_START_DPS = 25;       // start tracking a swing once rotation is clearly happening
+    const PEAK_MIN_DPS  = 100;      // build-up requirement (needs a real "wind-up")
+    const PEAK_MAX_DPS  = 1400;     // clamp for intensity mapping
+    const CROSS_MIN_DPS = 40;       // snap-back must be at least this strong on reversal frame
+
+    const CALM_DPS      = 40;       // gyro below this counts as "calm"
+    const CALM_MS       = 40;       // how long it must be calm to re-arm
 
     // Swing tracking state
     let tracking = false;
     let trackAxis = "x";
     let trackSign = 0;
     let peakAbs = 0;
-
-    // Re-arm tracking
-    let belowRearmSinceMs = null;
-
-    // Debug peaks (persist until next ring / reset)
-    let dbgOmegaPeak = 0;
-    let dbgAxisPeak = 0;
-    let dbgLastRingPeak = 0;
-    let dbgLastReason = "—";
-    let dbgLastAxis = "—";
+    let calmSinceMs = null;
 
     function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
     function norm(v) {
@@ -1403,51 +1360,24 @@
       const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
       const m = Math.max(ax, ay, az);
       if (m < 1) return Math.random() < 0.5 ? "left" : "right";
+
       if (m === ax) return v.x > 0 ? "left" : "right";
       if (m === ay) return v.y > 0 ? "up" : "down";
       return v.z > 0 ? "up" : "down";
     }
 
-    function updateRearm(nowMs, omegaDps) {
-      if (omegaDps <= REARM_DPS) {
-        if (belowRearmSinceMs == null) belowRearmSinceMs = nowMs;
+    function updateCalm(nowMs, omegaDps) {
+      if (omegaDps <= CALM_DPS) {
+        if (calmSinceMs == null) calmSinceMs = nowMs;
       } else {
-        belowRearmSinceMs = null;
+        calmSinceMs = null;
       }
     }
 
     function isRearmed(nowMs) {
       if (nowMs - lastRingTime < MIN_INTERVAL_MS) return false;
-      if (belowRearmSinceMs == null) return true; // if you never went high yet, allow starting
-      return (nowMs - belowRearmSinceMs) >= REARM_MS;
-    }
-
-    function format1(n) {
-      if (!isFinite(n)) return "—";
-      return String(Math.round(n));
-    }
-
-    function renderDebug(nowMs, omega, omegaDps, comp, gateInfo) {
-      if (!debugPanel.classList.contains("active")) return;
-      const msSinceRing = (lastRingTime ? Math.round(nowMs - lastRingTime) : 99999);
-
-      debugPanel.textContent =
-`GYRO raw (deg/s)
-omega: x=${format1(omega.x)}  y=${format1(omega.y)}  z=${format1(omega.z)}
-|omega|: ${format1(omegaDps)}   peak: ${format1(dbgOmegaPeak)}
-
-TRACK
-tracking: ${tracking ? "YES" : "no"}   axis: ${trackAxis}   sign: ${trackSign}
-axisComp: ${format1(comp)}   axisPeak: ${format1(dbgAxisPeak)}
-need: ARM>=${ARM_START_DPS}  PEAK>=${PEAK_MIN_DPS}  CROSS>=${CROSS_MIN_DPS}
-rearm: <=${REARM_DPS} for ${REARM_MS}ms   minInterval: ${MIN_INTERVAL_MS}ms
-rearmedNow: ${isRearmed(nowMs) ? "YES" : "no"}   sinceRing: ${msSinceRing}ms
-
-LAST RING
-axis=${dbgLastAxis}  peak=${format1(dbgLastRingPeak)}  reason=${dbgLastReason}
-
-GATES
-${gateInfo}`;
+      if (calmSinceMs == null) return false;
+      return (nowMs - calmSinceMs) >= CALM_MS;
     }
 
     function handleMotion(event) {
@@ -1455,100 +1385,95 @@ ${gateInfo}`;
 
       const nowMs = performance.now();
 
-      // keep face-up latch / mute logic
+      // Keep face-up latch / mute logic (uses accel + gravity)
       updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
 
       // --- RAW GYRO ---
       const rr = event.rotationRate;
-      if (!rr) {
-        renderDebug(nowMs, {x:0,y:0,z:0}, 0, 0, "rotationRate missing on this event");
-        return;
-      }
+      if (!rr) return;
 
-      // iOS/Safari typically provides deg/sec here. Numbers can be in hundreds-thousands.
       const omega = {
-        x: (rr.beta  != null ? rr.beta  : 0),
-        y: (rr.gamma != null ? rr.gamma : 0),
-        z: (rr.alpha != null ? rr.alpha : 0)
+        x: rr.beta  || 0,
+        y: rr.gamma || 0,
+        z: rr.alpha || 0
       };
 
       const omegaDps = gyroMag(omega);
+      updateCalm(nowMs, omegaDps);
 
-      // persistent peak numbers (so you can see “how hard” you actually swung)
-      if (omegaDps > dbgOmegaPeak) dbgOmegaPeak = omegaDps;
+      // --- SWING GATING (approx linear acceleration) ---
+      // Use accelerationIncludingGravity to approximate dynamic accel magnitude
+      let accIG = event.acceleration;
+      if (!accIG || (accIG.x == null && accIG.y == null && accIG.z == null)) {
+        accIG = event.accelerationIncludingGravity;
+      }
 
-      updateRearm(nowMs, omegaDps);
+      let swingAccelMag = 0;
+      if (accIG) {
+        const ax = accIG.x || 0;
+        const ay = accIG.y || 0;
+        const az = accIG.z || 0;
+        const mag = Math.sqrt(ax*ax + ay*ay + az*az);
+        const g = 9.81; // m/s^2
+        swingAccelMag = Math.abs(mag - g); // crude high-pass: "dynamic" part above gravity
+      }
 
-      // If not tracking: begin when rotating enough and we’re re-armed
+      // Only allow starting a swing if the *linear* swing acceleration is big enough.
+      // This blocks "rotate in place" (gyro without real swing) from ever arming.
+      if (!tracking && swingAccelMag < SWING_ACCEL_MIN) {
+        return;
+      }
+
+      // --- SWING STATE MACHINE (gyro-based snap-back) ---
+
+      // Not tracking yet: see if we should arm a new swing
       if (!tracking) {
-        const gateInfo =
-          `startGate: rearmed=${isRearmed(nowMs)}  omega=${format1(omegaDps)}  need>=${ARM_START_DPS}`;
-
-        renderDebug(nowMs, omega, omegaDps, 0, gateInfo);
-
         if (!isRearmed(nowMs)) return;
         if (omegaDps < ARM_START_DPS) return;
 
         trackAxis = pickDominantAxis(omega);
-        const comp0 = omega[trackAxis];
-        const s0 = Math.sign(comp0);
-
-        if (s0 === 0) return;
+        const comp = omega[trackAxis];
+        const s = Math.sign(comp);
+        if (s === 0) return;
 
         tracking = true;
-        trackSign = s0;
-        peakAbs = Math.abs(comp0);
-        dbgAxisPeak = peakAbs;
+        trackSign = s;
+        peakAbs = Math.abs(comp);
         return;
       }
 
-      // While tracking: we evaluate snap-back on the locked axis.
-      // (This makes it feel instantaneous on reversal.)
+      // Already tracking a swing
       let comp = omega[trackAxis];
       let absComp = Math.abs(comp);
+      let s = Math.sign(comp);
 
-      // If another axis becomes MUCH more dominant, re-lock (helps weird holds/rotations)
-      const dom = pickDominantAxis(omega);
-      if (dom !== trackAxis) {
-        const oldAbs = Math.abs(omega[trackAxis]);
-        const newAbs = Math.abs(omega[dom]);
-        if (newAbs > oldAbs * 1.15 && newAbs >= ARM_START_DPS) {
-          trackAxis = dom;
+      // Allow axis re-lock if another axis clearly dominates (helps follow real swing path)
+      const newAxis = pickDominantAxis(omega);
+      if (newAxis !== trackAxis) {
+        const oldDomAbs = absComp;
+        const newDomAbs = Math.abs(omega[newAxis]);
+        if (newDomAbs > oldDomAbs * 1.15) {
+          trackAxis = newAxis;
           comp = omega[trackAxis];
           absComp = Math.abs(comp);
-          const sN = Math.sign(comp);
-          if (sN !== 0) trackSign = sN;
+          const s2 = Math.sign(comp);
+          if (s2 !== 0) {
+            if (trackSign === 0) trackSign = s2;
+            s = s2;
+          }
         }
       }
 
       if (absComp > peakAbs) peakAbs = absComp;
-      if (peakAbs > dbgAxisPeak) dbgAxisPeak = peakAbs;
 
-      // Gate logic (instant on reversal frame):
-      // Instead of “sign flipped near zero” (which is finicky), require that the
-      // axis actually crosses to the opposite side by CROSS_MIN_DPS.
+      // Instant snap-back condition:
+      const signFlipped = (s !== 0 && trackSign !== 0 && s === -trackSign);
       const buildOk = (peakAbs >= PEAK_MIN_DPS);
+      const crossOk = (absComp >= CROSS_MIN_DPS);
 
-      let crossedOpposite = false;
-      if (trackSign > 0) crossedOpposite = (comp <= -CROSS_MIN_DPS);
-      else if (trackSign < 0) crossedOpposite = (comp >= +CROSS_MIN_DPS);
-
-      const intervalOk = (nowMs - lastRingTime >= MIN_INTERVAL_MS);
-
-      const gateInfo =
-        `buildOk=${buildOk} (peak=${format1(peakAbs)})  ` +
-        `crossedOpposite=${crossedOpposite} (comp=${format1(comp)})  ` +
-        `intervalOk=${intervalOk}`;
-
-      renderDebug(nowMs, omega, omegaDps, comp, gateInfo);
-
-      if (buildOk && crossedOpposite && intervalOk) {
+      if (signFlipped && buildOk && crossOk && (nowMs - lastRingTime >= MIN_INTERVAL_MS)) {
         lastRingTime = nowMs;
-
-        dbgLastRingPeak = peakAbs;
-        dbgLastAxis = trackAxis;
-        dbgLastReason = "snap-back";
 
         const clamped = Math.min(Math.max(peakAbs, PEAK_MIN_DPS), PEAK_MAX_DPS);
         const intensity = (clamped - PEAK_MIN_DPS) / (PEAK_MAX_DPS - PEAK_MIN_DPS);
@@ -1558,8 +1483,6 @@ ${gateInfo}`;
 
         const faceUpNow = isFaceUpLatched(nowMs);
 
-        // For 2-bell direction mapping & calibration:
-        // Use normalized raw gyro vector at snap-back instant.
         const dirN = norm(omega);
         const dir = (dirN.m > 0) ? { x: dirN.x, y: dirN.y, z: dirN.z } : (dualForwardVec || { x: 1, y: 0, z: 0 });
 
@@ -1601,24 +1524,15 @@ ${gateInfo}`;
           playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
         }
 
-        // After ring: immediately stop tracking and require a brief re-arm dip
         tracking = false;
         trackSign = 0;
         peakAbs = 0;
-
-        // reset peaks so next swing’s peaks are obvious
-        dbgOmegaPeak = 0;
-        dbgAxisPeak = 0;
-
-        // make sure re-arm doesn’t happen instantly in the same moment
-        belowRearmSinceMs = null;
-
+        calmSinceMs = null;
         return;
       }
 
-      // If rotation has basically stopped, abandon this swing.
-      // (Helps you recover quickly if you got into a weird state.)
-      if (omegaDps < ARM_START_DPS * 0.6) {
+      // If user stops rotating (gyro small), abandon this swing
+      if (omegaDps < CALM_DPS) {
         tracking = false;
         trackSign = 0;
         peakAbs = 0;
@@ -1630,14 +1544,7 @@ ${gateInfo}`;
       trackAxis = "x";
       trackSign = 0;
       peakAbs = 0;
-      belowRearmSinceMs = performance.now();
-
-      dbgOmegaPeak = 0;
-      dbgAxisPeak = 0;
-      dbgLastRingPeak = 0;
-      dbgLastReason = "—";
-      dbgLastAxis = "—";
-
+      calmSinceMs = performance.now();
       window.addEventListener("devicemotion", handleMotion, { passive: true });
     }
 
@@ -1646,7 +1553,7 @@ ${gateInfo}`;
       tracking = false;
       trackSign = 0;
       peakAbs = 0;
-      belowRearmSinceMs = null;
+      calmSinceMs = null;
 
       faceDownTriggeredThisRingWindow = false;
       activeRings.clear();
@@ -1697,7 +1604,6 @@ ${gateInfo}`;
       stopMotionListening();
       startMotionListening();
 
-      // tap preview (allowed)
       playBellToRingEl(note, bellRingLeft, 1, null);
     }
 
