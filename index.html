@@ -1330,23 +1330,18 @@
       return az > 0 ? "up" : "down";
     }
 
-    // ---- MOTION HANDLING (old jerk logic + 100ms gyro window) ----
+    // ---- MOTION HANDLING (old jerk logic + 100ms gyro window, NO cooldown window) ----
 
-    const MIN_INTERVAL_MS   = 100;  // cooldown between rings
+    const MIN_INTERVAL_MS   = 200;  // simple minimum interval like the old version
     const DELTA_RING_MIN    = 3.0;
     const DELTA_RING_MAX    = 10.0;
     const RESET_DELTA       = 1.5;
-
-    const CALM_MAG          = 1.0;  // accel magnitude for "calm"
-    const CALM_MS           = 60;
 
     const DIR_WINDOW_MS     = 100;
     const CLEAR_SNAP_COS    = 0.7;
     const HISTORY_MIN_COS   = 0.15;
 
     let lastRingTimeMs = 0;
-    let armed = true;
-    let calmSinceMs = null;
 
     let inSwing = false;
     let lastMagnitude = null;
@@ -1380,7 +1375,6 @@
     }
 
     function computeSwingDirectionVector(nowMs) {
-      // Snap component: opposite of lastGyroVec
       let snapUnit = null;
       if (lastGyroVec) {
         const n = norm(lastGyroVec);
@@ -1389,13 +1383,12 @@
         }
       }
 
-      // History component: average of last 100ms entries (also flipped)
       const cutoff = nowMs - DIR_WINDOW_MS;
       const recent = gyroHistory.filter(h => h.t >= cutoff);
       let histUnit = null;
       if (recent.length) {
         let arr = recent.slice();
-        if (arr.length >= 5) arr = arr.slice(1, -1); // trim ends
+        if (arr.length >= 5) arr = arr.slice(1, -1);
 
         let sx = 0, sy = 0, sz = 0;
         for (const h of arr) {
@@ -1409,7 +1402,6 @@
         }
       }
 
-      // Prefer snap if clearly directional, otherwise fall back to history
       if (snapUnit) return snapUnit;
       if (histUnit) return histUnit;
       return null;
@@ -1420,7 +1412,6 @@
 
       const forward = dualForwardVec;
 
-      // Snap-based decision
       let snapCos = null;
       if (lastGyroVec) {
         const n = norm(lastGyroVec);
@@ -1434,7 +1425,6 @@
         return snapCos >= 0 ? 1 : -1;
       }
 
-      // History-based decision
       const cutoff = nowMs - DIR_WINDOW_MS;
       const recent = gyroHistory.filter(h => h.t >= cutoff);
       if (recent.length) {
@@ -1453,7 +1443,6 @@
         }
       }
 
-      // If still ambiguous, fall back to snapCos if it exists, otherwise default
       if (snapCos != null && Math.abs(snapCos) > 0.05) {
         return snapCos >= 0 ? 1 : -1;
       }
@@ -1465,14 +1454,11 @@
 
       const nowMs = performance.now();
 
-      // Face-up latch & face-down mute
       updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
 
-      // Maintain gyro history for direction
       updateGyroHistory(event, nowMs);
 
-      // Get acceleration for jerk-based snap detection
       let acc = event.acceleration;
       if (!acc || (acc.x == null && acc.y == null && acc.z == null)) {
         acc = event.accelerationIncludingGravity;
@@ -1484,22 +1470,6 @@
       const az = acc.z || 0;
       const magnitude = Math.sqrt(ax*ax + ay*ay + az*az);
 
-      // Calm tracking for re-arming
-      if (magnitude < CALM_MAG) {
-        if (calmSinceMs == null) calmSinceMs = nowMs;
-      } else {
-        calmSinceMs = null;
-      }
-
-      const inCooldown = (nowMs - lastRingTimeMs) < MIN_INTERVAL_MS;
-
-      if (!armed) {
-        if (!inCooldown && calmSinceMs != null && (nowMs - calmSinceMs) >= CALM_MS) {
-          armed = true;
-        }
-      }
-
-      // Initialize on first frame
       if (lastMagnitude === null || lastAx === null) {
         lastMagnitude = magnitude;
         lastDelta = 0;
@@ -1518,13 +1488,11 @@
       const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
       const justReversed = wasBuilding && changedDirection;
 
-      if (justReversed && armed && !inCooldown) {
+      if (justReversed && (nowMs - lastRingTimeMs) > MIN_INTERVAL_MS) {
         const peak = Math.abs(lastDelta);
         if (peak >= DELTA_RING_MIN) {
           inSwing = true;
           lastRingTimeMs = nowMs;
-          armed = false;
-          calmSinceMs = null;
 
           const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
           const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
@@ -1533,7 +1501,6 @@
 
           const faceUpNow = isFaceUpLatched(nowMs);
 
-          // Dual-bell calibration: no sound, just build forward vector from swing direction
           if (secondNote && dualCalibrating) {
             const swingDir = computeSwingDirectionVector(nowMs);
             if (swingDir) {
@@ -1541,7 +1508,6 @@
                 dualForwardVec = { x: swingDir.x, y: swingDir.y, z: swingDir.z };
                 dualCalibCount = 1;
               } else {
-                // If roughly same direction, accumulate; otherwise reset
                 const sdot = dot(swingDir, dualForwardVec);
                 if (sdot >= 0) {
                   dualForwardVec.x += swingDir.x;
@@ -1560,7 +1526,6 @@
             }
           } else if (secondNote) {
             if (faceUpNow) {
-              // Face-up: always ring both when not calibrating
               playBellToRingEl(currentNote, bellRingLeft, intensity, computeVisualDirFromAccel(ax, ay, az));
               playBellToRingEl(secondNote, bellRingRight, intensity, computeVisualDirFromAccel(ax, ay, az));
             } else {
@@ -1572,7 +1537,6 @@
               }
             }
           } else {
-            // Single bell
             playBellToRingEl(currentNote, bellRingLeft, intensity, computeVisualDirFromAccel(ax, ay, az));
           }
         }
@@ -1590,10 +1554,7 @@
       inSwing = false;
       gyroHistory = [];
       lastGyroVec = null;
-
       lastRingTimeMs = 0;
-      armed = true;
-      calmSinceMs = null;
 
       window.addEventListener("devicemotion", handleMotion, { passive: true });
     }
