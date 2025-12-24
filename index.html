@@ -1110,8 +1110,11 @@
 
     let dualCalibrating = false;
     let dualCalibCount = 0;
+
+    // normalized direction for "Away From You"
     let dualForwardVec = null;
 
+    // Skip gating: user must click Info first
     let skipUnlocked = false;
 
     function resetDualMode() {
@@ -1304,24 +1307,25 @@
       }
     }
 
-    // ========= MOTION HANDLING: OLD SNAP LOGIC + 150ms WINDOWS =========
+    // ========= MOTION HANDLING: OLD SNAP LOGIC + 200ms WINDOWS =========
 
+    // Snap-back trigger thresholds (same behavior as before)
     let lastRingTime = 0;
-    const MIN_INTERVAL   = 200;
-    const DELTA_RING_MIN = 3.0;
-    const DELTA_RING_MAX = 10.0;
-    const RESET_DELTA    = 1.5;
+    const MIN_INTERVAL   = 200;   // ms between rings
+    const DELTA_RING_MIN = 3.0;   // min magnitude change for a swing
+    const DELTA_RING_MAX = 10.0;  // clamp for intensity
+    const RESET_DELTA    = 1.5;   // below this, not swinging
 
     let inSwing = false;
     let lastMagnitude = null;
     let lastDelta = 0;
     let lastAx = null, lastAy = null, lastAz = null;
 
-    // 150ms window for direction, 100ms for face-up
-    const DIR_WINDOW_MS = 150;
-    const FACEUP_WINDOW_MS = 100;
+    // 200ms windows for direction + face-up
+    const DIR_WINDOW_MS = 200;
+    const FACEUP_WINDOW_MS = 200;
 
-    let dirSamples = [];    // { t, v: {x,y,z} }
+    let dirSamples = [];    // { t, v: {x,y,z} } normalized direction samples
     let faceUpSamples = []; // { t, up: boolean }
 
     function dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
@@ -1394,6 +1398,7 @@
       let window = dirSamples.filter(s => s.t >= cutoff);
       if (!window.length) return null;
 
+      // enrich with dot against forward
       let items = window.map(s => ({
         t: s.t,
         v: s.v,
@@ -1440,12 +1445,7 @@
       return d >= 0 ? "primary" : "secondary";
     }
 
-    // NEW: direction choice uses ONLY the 150ms window
-    function classifyDirectionForSnap(nowMs) {
-      return buildDirectionVerdictFromWindow(nowMs);
-    }
-
-    // NEW: calibration also uses ONLY the 150ms window (no jerk fallback)
+    // Direction used to build dualForwardVec during calibration: average of window only
     function buildDirectionForCalibration(nowMs) {
       const cutoff = nowMs - DIR_WINDOW_MS;
       const window = dirSamples.filter(s => s.t >= cutoff);
@@ -1458,7 +1458,12 @@
         sz += s.v.z;
       }
       const n = norm({ x: sx, y: sy, z: sz });
-      return n.m > 0 ? n : null;
+      return (n.m > 0) ? n : null;
+    }
+
+    // Direction for snap: ONLY from the buildup window (no jerk direction)
+    function classifyDirectionForSnap(nowMs) {
+      return buildDirectionVerdictFromWindow(nowMs);
     }
 
     function handleMotion(event) {
@@ -1469,6 +1474,7 @@
       updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
 
+      // prune windows & push new samples
       pruneWindowSamples(nowMs);
       pushFaceUpSample(nowMs, event);
 
@@ -1491,7 +1497,7 @@
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
 
-      // direction samples for buildup window
+      // Use accel or jerk to populate direction window
       pushDirectionSample(nowMs, event, jx, jy, jz);
 
       if (absDelta < RESET_DELTA) inSwing = false;
@@ -1517,15 +1523,16 @@
           const faceUpMaj = isFaceUpMajority(nowMs);
 
           if (!secondNote) {
-            // Single bell: jerk decides *if* we ring, direction window not needed
+            // single-bell: always ring
             playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
           } else {
+            // two-bell behavior
             if (faceUpMaj && !dualCalibrating) {
-              // Face-up majority in the window → both bells
+              // phone face-up in last 200ms → both bells
               playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
               playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
             } else if (dualCalibrating) {
-              // Dual calibration: build forward vector from buildup window only
+              // calibration: no sound, just build dualForwardVec from 200ms window
               const calibDir = buildDirectionForCalibration(nowMs);
               if (calibDir) {
                 if (!dualForwardVec) {
@@ -1542,6 +1549,7 @@
                       z: dualForwardVec.z + calibDir.z
                     };
                   } else {
+                    // if user accidentally swung opposite, reset to new direction
                     dualForwardVec = { x: calibDir.x, y: calibDir.y, z: calibDir.z };
                     dualCalibCount = 1;
                   }
@@ -1556,12 +1564,15 @@
                 }
               }
             } else {
-              // Normal 2-bell direction: ONLY the 150ms buildup window
+              // normal 2-bell mapping: direction from 200ms buildup window only
               const verdict = classifyDirectionForSnap(nowMs);
-              if (verdict === "secondary" && secondNote) {
+
+              if (verdict === "primary") {
+                playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+              } else if (verdict === "secondary") {
                 playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
               } else {
-                // default to primary if window is ambiguous
+                // ambiguous buildup window ➜ default to primary
                 playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
               }
             }
