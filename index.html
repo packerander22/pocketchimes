@@ -1001,7 +1001,7 @@
 
       if (Math.abs(gzNorm) < 0.55 * gmag) return null;
 
-      return (gzNorm / gmag); // +1 = down, -1 = up
+      return (gzNorm / gmag);
     }
 
     function updateFaceUpLatch(event, nowMs) {
@@ -1075,7 +1075,7 @@
       });
     }
 
-    // ---- ONE-TIME FACE-UP CALIBRATION LISTENER ----
+    // ---- ONE-TIME CALIBRATION LISTENER ----
     let calibrationListening = false;
     let calibrationCompleted = false;
 
@@ -1107,14 +1107,17 @@
       }
     }
 
-    // ---- Dual-bell state + direction calibration ----
+    // ---- Dual-bell state + calibration (forward vs opposite) ----
     let currentNote = null;
     let secondNote = null;
 
     let dualCalibrating = false;
     let dualCalibCount = 0;
 
+    // normalized direction for "Away From You"
     let dualForwardVec = null;
+
+    // Skip gating: user must click Info first
     let skipUnlocked = false;
 
     function resetDualMode() {
@@ -1145,12 +1148,9 @@
     }
 
     function finishDualCalibration() {
-      if (!dualForwardVec || (!dualForwardVec.x && !dualForwardVec.y && !dualForwardVec.z)) {
-        dualForwardVec = { x: 1, y: 0, z: 0 };
-      } else {
-        const nf = norm(dualForwardVec);
-        dualForwardVec = nf.m > 0 ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
-      }
+      if (!dualForwardVec) dualForwardVec = { x: 1, y: 0, z: 0 };
+      const nf = norm(dualForwardVec);
+      dualForwardVec = nf.m > 0 ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
       dualCalibrating = false;
       calibToast.classList.remove("active");
     }
@@ -1313,7 +1313,7 @@
       }
     }
 
-    // ---- VECTOR HELPERS ----
+    // ---- Vector helpers ----
     function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
     function norm(v) {
       const m = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
@@ -1321,149 +1321,143 @@
       return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
 
-    function computeVisualDirFromAccel(v) {
-      const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
-      const m = Math.max(ax, ay, az);
-      if (m < 0.2) return Math.random() < 0.5 ? "left" : "right";
-
-      if (m === ax) return v.x > 0 ? "right" : "left";
-      if (m === ay) return v.y > 0 ? "up" : "down";
-      return v.z > 0 ? "up" : "down";
+    function computeVisualDirFromAccel(ax, ay, az) {
+      const absX = Math.abs(ax), absY = Math.abs(ay), absZ = Math.abs(az);
+      const m = Math.max(absX, absY, absZ);
+      if (m < 0.5) return Math.random() < 0.5 ? "left" : "right";
+      if (m === absX) return ax > 0 ? "right" : "left";
+      if (m === absY) return ay > 0 ? "down" : "up";
+      return az > 0 ? "up" : "down";
     }
 
-    // ---- SNAP-BASED SWING LOGIC WITH 100ms COOLDOWN ----
-    const BUILDUP_WINDOW_MS = 100;   // keep last 100 ms of directions
-    const COOLDOWN_MS       = 100;   // min time between rings
+    // ---- MOTION HANDLING (old jerk logic + 100ms gyro window) ----
 
-    const SNAP_MAG_MIN      = 1.2;   // how strong the snap must be to fire
-    const PREV_MAG_MIN      = 0.5;   // previous frame must be at least this to count as real swing
-    const REVERSE_COS       = -0.25; // dot(prevDir, currDir) below this = clear reversal
-    const CLEAR_FORWARD_COS = 0.7;   // "clear" alignment with forward/back axis
+    const MIN_INTERVAL_MS   = 100;  // cooldown between rings
+    const DELTA_RING_MIN    = 3.0;
+    const DELTA_RING_MAX    = 10.0;
+    const RESET_DELTA       = 1.5;
 
-    const INT_PEAK_MIN      = SNAP_MAG_MIN;
-    const INT_PEAK_MAX      = 6.0;
+    const CALM_MAG          = 1.0;  // accel magnitude for "calm"
+    const CALM_MS           = 60;
 
-    let buildupSamples = [];         // { t, dir }
-    let lastDir        = null;
-    let lastMag        = 0;
-    let lastSampleTime = 0;
+    const DIR_WINDOW_MS     = 100;
+    const CLEAR_SNAP_COS    = 0.7;
+    const HISTORY_MIN_COS   = 0.15;
 
-    let lastRingTime   = 0;
-    let cooldownUntil  = 0;
+    let lastRingTimeMs = 0;
+    let armed = true;
+    let calmSinceMs = null;
 
-    function pushBuildupSample(nowMs, dir) {
-      buildupSamples.push({ t: nowMs, dir: { x: dir.x, y: dir.y, z: dir.z } });
-      const cutoff = nowMs - BUILDUP_WINDOW_MS;
-      while (buildupSamples.length && buildupSamples[0].t < cutoff) {
-        buildupSamples.shift();
+    let inSwing = false;
+    let lastMagnitude = null;
+    let lastDelta = 0;
+    let lastAx = null, lastAy = null, lastAz = null;
+
+    let gyroHistory = [];
+    let lastGyroVec = null;
+
+    function updateGyroHistory(event, nowMs) {
+      const rr = event.rotationRate;
+      if (!rr) return;
+      const gx = rr.beta  || 0;
+      const gy = rr.gamma || 0;
+      const gz = rr.alpha || 0;
+      const mag = Math.sqrt(gx*gx + gy*gy + gz*gz);
+      if (!isFinite(mag) || mag < 1e-3) return;
+
+      lastGyroVec = { x: gx, y: gy, z: gz };
+
+      const nx = gx / mag;
+      const ny = gy / mag;
+      const nz = gz / mag;
+
+      gyroHistory.push({ t: nowMs, x: nx, y: ny, z: nz });
+
+      const cutoff = nowMs - DIR_WINDOW_MS;
+      while (gyroHistory.length && gyroHistory[0].t < cutoff) {
+        gyroHistory.shift();
       }
     }
 
-    function computeBuildupDirection() {
-      const n = buildupSamples.length;
-      if (n === 0) return null;
-
-      // First pass: average everything
-      let sum = { x: 0, y: 0, z: 0 };
-      for (let i = 0; i < n; i++) {
-        const d = buildupSamples[i].dir;
-        sum.x += d.x; sum.y += d.y; sum.z += d.z;
-      }
-      let avg = norm(sum);
-      if (avg.m === 0) return null;
-
-      // Trim possible outliers only from front and tail
-      const TRIM_DOT = 0.3;
-      let start = 0;
-      let end   = n - 1;
-
-      const firstDot = dot(buildupSamples[start].dir, avg);
-      if (firstDot < TRIM_DOT && start < end) start++;
-
-      const lastDot = dot(buildupSamples[end].dir, avg);
-      if (lastDot < TRIM_DOT && end > start) end--;
-
-      sum = { x: 0, y: 0, z: 0 };
-      let count = 0;
-      for (let i = start; i <= end; i++) {
-        const d = buildupSamples[i].dir;
-        sum.x += d.x; sum.y += d.y; sum.z += d.z;
-        count++;
-      }
-      if (!count) return null;
-
-      avg = norm(sum);
-      if (avg.m === 0) return null;
-
-      return { x: avg.x, y: avg.y, z: avg.z };
-    }
-
-    function triggerRingWithDirection(ringDirN, snapMag, buildDirForCalib, nowMs) {
-      const faceUpNow = isFaceUpLatched(nowMs);
-      const visualDir = computeVisualDirFromAccel(ringDirN);
-
-      const peakClamped = Math.min(Math.max(snapMag, INT_PEAK_MIN), INT_PEAK_MAX);
-      const intensity = (peakClamped - INT_PEAK_MIN) / (INT_PEAK_MAX - INT_PEAK_MIN);
-
-      ensureWakeLock();
-
-      // Dual-bell calibration: learn "forward" direction of the swing, don't play bells yet
-      if (secondNote && dualCalibrating) {
-        // Prefer buildup direction (forward swing), fall back to opposite of snap
-        let calibDir = buildDirForCalib;
-        if (!calibDir) {
-          calibDir = { x: -ringDirN.x, y: -ringDirN.y, z: -ringDirN.z };
+    function computeSwingDirectionVector(nowMs) {
+      // Snap component: opposite of lastGyroVec
+      let snapUnit = null;
+      if (lastGyroVec) {
+        const n = norm(lastGyroVec);
+        if (n.m > 0) {
+          snapUnit = { x: -n.x, y: -n.y, z: -n.z };
         }
-        const nf = norm(calibDir);
-        if (nf.m === 0) return;
+      }
 
-        if (!dualForwardVec) {
-          dualForwardVec = { x: nf.x, y: nf.y, z: nf.z };
-          dualCalibCount = 1;
-        } else {
-          const sdot = dot(nf, norm(dualForwardVec));
-          if (sdot >= 0) {
-            dualCalibCount++;
-          } else {
-            dualForwardVec = { x: nf.x, y: nf.y, z: nf.z };
-            dualCalibCount = 1;
-          }
+      // History component: average of last 100ms entries (also flipped)
+      const cutoff = nowMs - DIR_WINDOW_MS;
+      const recent = gyroHistory.filter(h => h.t >= cutoff);
+      let histUnit = null;
+      if (recent.length) {
+        let arr = recent.slice();
+        if (arr.length >= 5) arr = arr.slice(1, -1); // trim ends
+
+        let sx = 0, sy = 0, sz = 0;
+        for (const h of arr) {
+          sx += -h.x;
+          sy += -h.y;
+          sz += -h.z;
         }
-
-        calibProgress.textContent = String(dualCalibCount);
-        if (dualCalibCount >= 3) finishDualCalibration();
-        return;
+        const m = Math.sqrt(sx*sx + sy*sy + sz*sz);
+        if (isFinite(m) && m > 1e-3) {
+          histUnit = { x: sx/m, y: sy/m, z: sz/m };
+        }
       }
 
-      // Single bell: direction is irrelevant
-      if (!secondNote) {
-        playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
-        return;
+      // Prefer snap if clearly directional, otherwise fall back to history
+      if (snapUnit) return snapUnit;
+      if (histUnit) return histUnit;
+      return null;
+    }
+
+    function decideDirectionSign(nowMs) {
+      if (!secondNote || !dualForwardVec) return 1;
+
+      const forward = dualForwardVec;
+
+      // Snap-based decision
+      let snapCos = null;
+      if (lastGyroVec) {
+        const n = norm(lastGyroVec);
+        if (n.m > 0) {
+          const sx = -n.x, sy = -n.y, sz = -n.z;
+          snapCos = sx*forward.x + sy*forward.y + sz*forward.z;
+        }
       }
 
-      // Dual-bell mapping
-      const fAxis = (dualForwardVec && (dualForwardVec.x || dualForwardVec.y || dualForwardVec.z))
-        ? norm(dualForwardVec)
-        : { x: 1, y: 0, z: 0 };
-
-      // face-up override: always both bells
-      if (faceUpNow) {
-        playBellToRingEl(currentNote,  bellRingLeft,  intensity, visualDir);
-        playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
-        return;
+      if (snapCos != null && Math.abs(snapCos) >= CLEAR_SNAP_COS) {
+        return snapCos >= 0 ? 1 : -1;
       }
 
-      // Use the direction of the *swing* (forward) against the forward axis
-      const swingDir = buildDirForCalib || { x: -ringDirN.x, y: -ringDirN.y, z: -ringDirN.z };
-      const swingN = norm(swingDir);
-      const d = dot(swingN, fAxis);
-      const sideSign = d >= 0 ? 1 : -1;
+      // History-based decision
+      const cutoff = nowMs - DIR_WINDOW_MS;
+      const recent = gyroHistory.filter(h => h.t >= cutoff);
+      if (recent.length) {
+        let cosList = recent.map(h => {
+          const mx = -h.x, my = -h.y, mz = -h.z;
+          return mx*forward.x + my*forward.y + mz*forward.z;
+        });
+        if (cosList.length >= 5) cosList = cosList.slice(1, -1);
 
-      if (sideSign >= 0) {
-        playBellToRingEl(currentNote,  bellRingLeft,  intensity, visualDir);
-      } else {
-        playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+        let sum = 0;
+        for (const c of cosList) sum += c;
+        const mean = sum / cosList.length;
+
+        if (Math.abs(mean) >= HISTORY_MIN_COS) {
+          return mean >= 0 ? 1 : -1;
+        }
       }
+
+      // If still ambiguous, fall back to snapCos if it exists, otherwise default
+      if (snapCos != null && Math.abs(snapCos) > 0.05) {
+        return snapCos >= 0 ? 1 : -1;
+      }
+      return 1;
     }
 
     function handleMotion(event) {
@@ -1471,9 +1465,14 @@
 
       const nowMs = performance.now();
 
+      // Face-up latch & face-down mute
       updateFaceUpLatch(event, nowMs);
       checkFaceDownOnly(event);
 
+      // Maintain gyro history for direction
+      updateGyroHistory(event, nowMs);
+
+      // Get acceleration for jerk-based snap detection
       let acc = event.acceleration;
       if (!acc || (acc.x == null && acc.y == null && acc.z == null)) {
         acc = event.accelerationIncludingGravity;
@@ -1483,99 +1482,131 @@
       const ax = acc.x || 0;
       const ay = acc.y || 0;
       const az = acc.z || 0;
-      const mag = Math.sqrt(ax*ax + ay*ay + az*az);
-      if (!isFinite(mag) || mag < 0.02) {
-        // tiny noise; still keep previous samples/window
+      const magnitude = Math.sqrt(ax*ax + ay*ay + az*az);
+
+      // Calm tracking for re-arming
+      if (magnitude < CALM_MAG) {
+        if (calmSinceMs == null) calmSinceMs = nowMs;
+      } else {
+        calmSinceMs = null;
+      }
+
+      const inCooldown = (nowMs - lastRingTimeMs) < MIN_INTERVAL_MS;
+
+      if (!armed) {
+        if (!inCooldown && calmSinceMs != null && (nowMs - calmSinceMs) >= CALM_MS) {
+          armed = true;
+        }
+      }
+
+      // Initialize on first frame
+      if (lastMagnitude === null || lastAx === null) {
+        lastMagnitude = magnitude;
+        lastDelta = 0;
+        lastAx = ax; lastAy = ay; lastAz = az;
         return;
       }
 
-      const invMag = 1 / mag;
-      const currDir = { x: ax * invMag, y: ay * invMag, z: az * invMag };
+      const signedDelta = magnitude - lastMagnitude;
+      const absDelta = Math.abs(signedDelta);
 
-      // Always maintain 100 ms buildup window
-      pushBuildupSample(nowMs, currDir);
+      if (absDelta < RESET_DELTA) inSwing = false;
 
-      // Detect snap: reversal from lastDir with enough previous magnitude + snap magnitude
-      let snapDetected = false;
-      if (lastDir && lastMag >= PREV_MAG_MIN) {
-        const cosPrev = dot(lastDir, currDir);
-        if (cosPrev <= REVERSE_COS && mag >= SNAP_MAG_MIN) {
-          snapDetected = true;
+      const prevSign = Math.sign(lastDelta);
+      const currSign = Math.sign(signedDelta);
+      const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
+      const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
+      const justReversed = wasBuilding && changedDirection;
+
+      if (justReversed && armed && !inCooldown) {
+        const peak = Math.abs(lastDelta);
+        if (peak >= DELTA_RING_MIN) {
+          inSwing = true;
+          lastRingTimeMs = nowMs;
+          armed = false;
+          calmSinceMs = null;
+
+          const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
+          const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
+
+          ensureWakeLock();
+
+          const faceUpNow = isFaceUpLatched(nowMs);
+
+          // Dual-bell calibration: no sound, just build forward vector from swing direction
+          if (secondNote && dualCalibrating) {
+            const swingDir = computeSwingDirectionVector(nowMs);
+            if (swingDir) {
+              if (!dualForwardVec) {
+                dualForwardVec = { x: swingDir.x, y: swingDir.y, z: swingDir.z };
+                dualCalibCount = 1;
+              } else {
+                // If roughly same direction, accumulate; otherwise reset
+                const sdot = dot(swingDir, dualForwardVec);
+                if (sdot >= 0) {
+                  dualForwardVec.x += swingDir.x;
+                  dualForwardVec.y += swingDir.y;
+                  dualForwardVec.z += swingDir.z;
+                  dualCalibCount++;
+                } else {
+                  dualForwardVec = { x: swingDir.x, y: swingDir.y, z: swingDir.z };
+                  dualCalibCount = 1;
+                }
+              }
+              calibProgress.textContent = String(dualCalibCount);
+              if (dualCalibCount >= 3) {
+                finishDualCalibration();
+              }
+            }
+          } else if (secondNote) {
+            if (faceUpNow) {
+              // Face-up: always ring both when not calibrating
+              playBellToRingEl(currentNote, bellRingLeft, intensity, computeVisualDirFromAccel(ax, ay, az));
+              playBellToRingEl(secondNote, bellRingRight, intensity, computeVisualDirFromAccel(ax, ay, az));
+            } else {
+              const sign = decideDirectionSign(nowMs);
+              if (sign >= 0) {
+                playBellToRingEl(currentNote, bellRingLeft, intensity, computeVisualDirFromAccel(ax, ay, az));
+              } else {
+                playBellToRingEl(secondNote, bellRingRight, intensity, computeVisualDirFromAccel(ax, ay, az));
+              }
+            }
+          } else {
+            // Single bell
+            playBellToRingEl(currentNote, bellRingLeft, intensity, computeVisualDirFromAccel(ax, ay, az));
+          }
         }
       }
 
-      // Update lastDir after snap detection decision
-      lastDir = currDir;
-      lastMag = mag;
-      lastSampleTime = nowMs;
-
-      if (!snapDetected) return;
-
-      // We hit a snap-back frame here.
-      // We ALWAYS reset swing state (implicitly) but we might not fire if in cooldown.
-      const inCooldown = nowMs < cooldownUntil;
-
-      // Build the "forward swing" direction:
-      // 1) Check if opposite of snap is clearly aligned with forward/back axis.
-      let buildDir = null;
-      let forwardAxis = null;
-
-      if (dualForwardVec && (dualForwardVec.x || dualForwardVec.y || dualForwardVec.z)) {
-        const fN = norm(dualForwardVec);
-        forwardAxis = fN.m > 0 ? fN : null;
-      }
-
-      const snapOpp = { x: -currDir.x, y: -currDir.y, z: -currDir.z }; // opposite of snap = buildup direction
-
-      if (forwardAxis) {
-        const oppCos = dot(snapOpp, forwardAxis);
-        if (Math.abs(oppCos) >= CLEAR_FORWARD_COS) {
-          // Snap's opposite is clearly forward/back → trust it
-          buildDir = snapOpp;
-        }
-      }
-
-      // If we don't have a clear direction from snap, fall back to buildup window
-      if (!buildDir) {
-        const windowDir = computeBuildupDirection();
-        if (windowDir) {
-          buildDir = windowDir;
-        } else {
-          buildDir = snapOpp;
-        }
-      }
-
-      // Cooldown: we *still* track buildup and motion, but we skip firing the bell.
-      if (inCooldown) {
-        return;
-      }
-
-      lastRingTime  = nowMs;
-      cooldownUntil = nowMs + COOLDOWN_MS;
-
-      triggerRingWithDirection(currDir, mag, buildDir, nowMs);
+      lastMagnitude = magnitude;
+      lastDelta = signedDelta;
+      lastAx = ax; lastAy = ay; lastAz = az;
     }
 
     function startMotionListening() {
-      buildupSamples = [];
-      lastDir = null;
-      lastMag = 0;
-      lastSampleTime = 0;
-      lastRingTime = 0;
-      cooldownUntil = 0;
+      lastMagnitude = null;
+      lastDelta = 0;
+      lastAx = lastAy = lastAz = null;
+      inSwing = false;
+      gyroHistory = [];
+      lastGyroVec = null;
+
+      lastRingTimeMs = 0;
+      armed = true;
+      calmSinceMs = null;
 
       window.addEventListener("devicemotion", handleMotion, { passive: true });
     }
 
     function stopMotionListening() {
       window.removeEventListener("devicemotion", handleMotion);
+      lastMagnitude = null;
+      lastDelta = 0;
+      lastAx = lastAy = lastAz = null;
+      inSwing = false;
 
-      buildupSamples = [];
-      lastDir = null;
-      lastMag = 0;
-      lastSampleTime = 0;
-      lastRingTime = 0;
-      cooldownUntil = 0;
+      gyroHistory = [];
+      lastGyroVec = null;
 
       faceDownTriggeredThisRingWindow = false;
       activeRings.clear();
@@ -1684,7 +1715,6 @@
       skipDualCalibration();
     });
 
-    // Tap-to-ring (blocked while dualCalibrating)
     playNoteLeft.addEventListener("click", () => {
       if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
