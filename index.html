@@ -1333,20 +1333,23 @@
 
     // ---- MOTION HANDLING (LOW-LATENCY SNAP + 100ms BUILD WINDOW) ----
     let lastRingTime = 0;
+    let canArmAgainAtMs = 0;  // explicit 100ms cooldown gate
 
-    const MIN_INTERVAL_MS     = 110;  // minimum time between rings
+    // 100 ms cooldown between when motion can trigger the bell
+    const MIN_INTERVAL_MS     = 100;  // cooldown between triggers
     const HISTORY_WINDOW_MS   = 220;  // how long we keep samples (~200ms)
     const SNAP_LOOKBACK_MS    = 110;  // build-up window length (~100ms)
 
-    const FORWARD_ARM_MAG     = 1.0;  // start tracking forward swing above this
-    const FORWARD_PEAK_REQ    = 1.8;  // must hit at least this in build-up
-    const SNAP_MAG_MIN        = 1.4;  // snap-back frame must be at least this
-    const REVERSE_COS_THRESH  = -0.15; // cos(lastDir, currDir) <= this ⇒ clear reversal
+    // EASIER TRIGGER THRESHOLDS
+    const FORWARD_ARM_MAG     = 0.7;   // was 1.0 – start tracking forward swing sooner
+    const FORWARD_PEAK_REQ    = 1.3;   // was 1.8 – easier to "qualify" a real swing
+    const SNAP_MAG_MIN        = 1.0;   // was 1.4 – snap-back frame doesn't need to be as huge
+    const REVERSE_COS_THRESH  = -0.15; // unchanged – still a real reversal
 
-    const BUILD_USE_MAG_MIN   = 0.8;  // only use build frames above this for direction
+    const BUILD_USE_MAG_MIN   = 0.8;   // only use build frames above this for direction
 
     const INT_PEAK_MIN        = FORWARD_PEAK_REQ;
-    const INT_PEAK_MAX        = 8.0;  // clamp for intensity mapping
+    const INT_PEAK_MAX        = 8.0;
 
     let swingPhase = "idle";          // "idle" | "forward"
     let forwardPeakMag = 0;
@@ -1391,7 +1394,6 @@
       }
 
       // Trim contradictory outliers only from the beginning or tail:
-      // Anything that points roughly opposite the running average
       let changed = true;
       while (changed && vecs.length >= 2) {
         changed = false;
@@ -1442,7 +1444,6 @@
       pushHistory(nowMs, ax, ay, az, mag);
 
       if (mag < 0.1) {
-        // Tiny jitter; optionally reset if we were in a weak forward state for a while
         if (swingPhase === "forward" && nowMs - lastRingTime > 250 && forwardPeakMag < FORWARD_PEAK_REQ) {
           swingPhase = "idle";
           forwardPeakMag = 0;
@@ -1457,7 +1458,12 @@
       const cosLast = hasLast ? dot(currDir, lastDirN) : 1.0;
 
       if (swingPhase === "idle") {
-        if (mag >= FORWARD_ARM_MAG && (nowMs - lastRingTime >= MIN_INTERVAL_MS)) {
+        // respect 100ms cooldown before we even arm
+        if (nowMs < canArmAgainAtMs) {
+          lastDirN = currDir;
+          return;
+        }
+        if (mag >= FORWARD_ARM_MAG) {
           swingPhase = "forward";
           forwardPeakMag = mag;
           hadStrongForward = mag >= FORWARD_PEAK_REQ;
@@ -1471,24 +1477,24 @@
         const reversed    = hasLast && cosLast <= REVERSE_COS_THRESH;
         const hasBuilt    = hadStrongForward && forwardPeakMag >= FORWARD_PEAK_REQ;
         const strongSnap  = mag >= SNAP_MAG_MIN;
-        const intervalOk  = (nowMs - lastRingTime) >= MIN_INTERVAL_MS;
+        const intervalOk  = nowMs >= canArmAgainAtMs; // 100ms cooldown gate
 
         if (reversed && hasBuilt && strongSnap && intervalOk) {
           // ---- Ring right now (low latency) ----
           lastRingTime = nowMs;
+          canArmAgainAtMs = nowMs + MIN_INTERVAL_MS; // start cooldown
 
-          const buildDirN = computeBuildDir(nowMs);   // ~100 ms build window
+          const buildDirN = computeBuildDir(nowMs);
           const faceUpNow = isFaceUpLatched(nowMs);
           ensureWakeLock();
 
           const peakClamped = Math.min(Math.max(forwardPeakMag, INT_PEAK_MIN), INT_PEAK_MAX);
           const intensity = (peakClamped - INT_PEAK_MIN) / (INT_PEAK_MAX - INT_PEAK_MIN);
 
-          let ringDir = currDir; // default to snap-back direction
+          let ringDir = currDir;
           let visualDir = computeVisualDirFromAccel(currDir);
 
           if (secondNote) {
-            // Two-bell mode direction logic
             if (dualForwardVec && (dualForwardVec.x || dualForwardVec.y || dualForwardVec.z)) {
               const fN = norm(dualForwardVec);
               const CLEAR_COS      = 0.35;
@@ -1498,11 +1504,9 @@
               let sideSign = 0;
 
               if (Math.abs(dSnap) >= CLEAR_COS) {
-                // Snap-back is clearly to one side → use it
                 sideSign = dSnap >= 0 ? 1 : -1;
                 ringDir = currDir;
               } else if (buildDirN && buildDirN.m) {
-                // Snap is questionable → use build-up window to decide
                 const dBuild = dot(buildDirN, fN);
                 if (Math.abs(dBuild) >= BUILD_MIN_COS || Math.abs(dBuild) >= Math.abs(dSnap)) {
                   sideSign = dBuild >= 0 ? 1 : -1;
@@ -1512,19 +1516,16 @@
                   sideSign = dSnap >= 0 ? 1 : -1;
                 }
               } else {
-                // No useful build window → fall back to snap sign
                 sideSign = dSnap >= 0 ? 1 : -1;
               }
 
               if (faceUpNow) {
-                // Face-up: ring both (unless calibrating)
                 if (!dualCalibrating) {
                   playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
                   playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
                 }
               } else {
                 if (dualCalibrating) {
-                  // Use ringDir to refine forward calibration
                   if (!dualForwardVec) {
                     dualForwardVec = { x: ringDir.x, y: ringDir.y, z: ringDir.z };
                     dualCalibCount = 1;
@@ -1548,7 +1549,6 @@
                 }
               }
             } else {
-              // No forward calibration yet: simple fallback splitting
               const fallbackAxis = { x: 1, y: 0, z: 0 };
               const dSnapAxis = dot(currDir, fallbackAxis);
               const sideSign = dSnapAxis >= 0 ? 1 : -1;
@@ -1582,16 +1582,13 @@
               }
             }
           } else {
-            // Single bell: direction doesn't matter, still uses low-latency snap
             playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
           }
 
-          // Reset swing state after a ring
           swingPhase = "idle";
           forwardPeakMag = 0;
           hadStrongForward = false;
         } else {
-          // If the forward swing fizzles out without a snap, drop back to idle
           if (mag < 0.5 && nowMs - lastRingTime > 250 && forwardPeakMag < FORWARD_PEAK_REQ) {
             swingPhase = "idle";
             forwardPeakMag = 0;
@@ -1609,6 +1606,8 @@
       hadStrongForward = false;
       historySamples = [];
       lastDirN = null;
+      lastRingTime = 0;
+      canArmAgainAtMs = performance.now(); // can arm immediately on start
 
       window.addEventListener("devicemotion", handleMotion, { passive: true });
     }
@@ -1620,6 +1619,8 @@
       hadStrongForward = false;
       historySamples = [];
       lastDirN = null;
+      lastRingTime = 0;
+      canArmAgainAtMs = 0;
 
       faceDownTriggeredThisRingWindow = false;
       activeRings.clear();
