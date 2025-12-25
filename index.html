@@ -1416,8 +1416,8 @@
     // ---- MOTION HANDLING (jerk-based ring, direction from pre-jerk gyro) ----
     let lastRingTime = 0;
 
-    const MIN_INTERVAL   = 140;   // ms between rings (prevents double fire)
-    const DELTA_RING_MIN = 3.0;   // minimum "jerk" needed to ring
+    const MIN_INTERVAL   = 150;   // ms between rings (prevents double fire)
+    const DELTA_RING_MIN = 5.0;   // minimum "jerk" needed to ring
     const DELTA_RING_MAX = 10.0;  // clamp for intensity
     const RESET_DELTA    = 1.5;   // under this, swing considered calm
 
