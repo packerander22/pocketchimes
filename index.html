@@ -70,13 +70,14 @@
       position: relative;
     }
 
+    /* --- Logo with tighter, symmetric spacing --- */
     .global-logo {
       position: fixed;
-      top: 1rem;               /* top gap */
+      top: 0.7rem;            /* tighter top gap */
       left: 50%;
       transform: translateX(-50%);
       width: 96px;
-      height: 96px;            /* fixed height so spacing math is exact */
+      height: 96px;
       z-index: 20;
       pointer-events: none;
     }
@@ -86,7 +87,7 @@
       max-width: 480px;
       margin: auto;
       /* top padding = topGap + logoHeight + bottomGap (same as topGap) */
-      padding: calc(1rem + 96px + 1rem) 1.2rem 2.5rem;
+      padding: calc(0.7rem + 96px + 0.7rem) 1.2rem 2.5rem;
     }
 
     .card,
@@ -191,7 +192,7 @@
       display: none;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
       text-align: center;
       color: #020617;
       padding: 1.2rem;
@@ -200,6 +201,23 @@
     }
 
     .play-screen.active { display: flex; }
+
+    /* Wrapper so bells stay vertically centered, description underneath */
+    .play-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 520px;
+    }
+
+    .bell-center-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+    }
 
     .top-btn {
       position: fixed;
@@ -335,9 +353,9 @@
       opacity: 0.9;
       max-width: 18rem;
       line-height: 1.5;
-      margin-bottom: 0.8rem;
+      margin: 0 auto 0.8rem;
       color: #000000;           /* simple black text */
-      text-shadow: none;        /* remove glow/shadow */
+      text-shadow: none;        /* no glow */
     }
 
     .calib-toast {
@@ -521,12 +539,12 @@
 
     @media (orientation: landscape) {
       .global-logo {
-        top: 0.5rem;
+        top: 0.4rem;
         width: 78px;
         height: 78px;
       }
       .app {
-        padding: calc(0.5rem + 78px + 0.5rem) 1.2rem 2.5rem;
+        padding: calc(0.4rem + 78px + 0.4rem) 1.2rem 2.5rem;
       }
       .play-note-label { font-size: 2.6rem; }
       .hint-text { margin-bottom: 0.4rem; }
@@ -616,37 +634,41 @@
       </div>
     </div>
 
-    <div class="dual-area" id="dual-area" aria-label="Bell area">
-      <div class="dual-pane" id="pane-left">
-        <div class="note-slot">
-          <div class="play-note-label" id="play-note-label-left">C5</div>
-        </div>
+    <div class="play-main">
+      <div class="bell-center-wrap">
+        <div class="dual-area" id="dual-area" aria-label="Bell area">
+          <div class="dual-pane" id="pane-left">
+            <div class="note-slot">
+              <div class="play-note-label" id="play-note-label-left">C5</div>
+            </div>
 
-        <div class="bell-visual" id="bell-visual-left" role="button" aria-label="Tap to ring left bell" tabindex="0">
-          <div class="bell-ring" id="bell-ring-left"></div>
-          <div class="bell-clapper"></div>
-        </div>
+            <div class="bell-visual" id="bell-visual-left" role="button" aria-label="Tap to ring left bell" tabindex="0">
+              <div class="bell-ring" id="bell-ring-left"></div>
+              <div class="bell-clapper"></div>
+            </div>
 
-        <div style="height: 10px;"></div>
+            <div style="height: 10px;"></div>
+          </div>
+
+          <div class="dual-pane hidden" id="pane-right">
+            <div class="note-slot">
+              <div class="play-note-label" id="play-note-label-right">D5</div>
+            </div>
+
+            <div class="bell-visual" id="bell-visual-right" role="button" aria-label="Tap to ring right bell" tabindex="0">
+              <div class="bell-ring" id="bell-ring-right"></div>
+              <div class="bell-clapper"></div>
+            </div>
+
+            <div style="height: 10px;"></div>
+          </div>
+        </div>
       </div>
 
-      <div class="dual-pane hidden" id="pane-right">
-        <div class="note-slot">
-          <div class="play-note-label" id="play-note-label-right">D5</div>
-        </div>
-
-        <div class="bell-visual" id="bell-visual-right" role="button" aria-label="Tap to ring right bell" tabindex="0">
-          <div class="bell-ring" id="bell-ring-right"></div>
-          <div class="bell-clapper"></div>
-        </div>
-
-        <div style="height: 10px;"></div>
+      <div class="hint-text">
+        Swing your phone like a handbell.
+        Tap the note or bell to ring.
       </div>
-    </div>
-
-    <div class="hint-text">
-      Swing your phone like a handbell.
-      Tap the note or bell to ring.
     </div>
   </div>
 
@@ -1016,27 +1038,31 @@
       }
     }
 
+    // HYBRID: use calibration sign when available, otherwise raw gz
     function computeCosToDownFromEvent(event) {
-      if (!faceDownZSign) return null;
       const g = event.accelerationIncludingGravity;
       if (!g || g.x == null || g.y == null || g.z == null) return null;
 
       const gx = g.x || 0, gy = g.y || 0, gz = g.z || 0;
+      let z = gz;
 
-      const gzNorm = gz * faceDownZSign;
-      const gmag = Math.sqrt(gx*gx + gy*gy + gzNorm*gz*1.0);
+      // If calibration has set faceDownZSign, align Z so that +1 ≈ face-down
+      if (faceDownZSign !== null && faceDownZSign !== 0) {
+        z = gz * faceDownZSign;
+      }
+
+      const gmag = Math.sqrt(gx*gx + gy*gy + z*z);
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return null;
 
-      if (Math.abs(gzNorm) < 0.55 * gmag) return null;
-
-      return (gzNorm / gmag); // +1 = face-down, -1 = face-up
+      // +1 ≈ face-down, -1 ≈ face-up in the user's real-world frame
+      return z / gmag;
     }
 
     function updateFaceUpWindow(event, nowMs) {
       const cosToDown = computeCosToDownFromEvent(event);
       if (cosToDown == null) return;
 
-      const isUp = (cosToDown <= -COS_FACE_THRESHOLD); // mirror of face-down mute angle
+      const isUp = (cosToDown <= -COS_FACE_THRESHOLD);
       faceUpSamples.push({ t: nowMs, up: isUp });
 
       const cutoff = nowMs - FACEUP_WINDOW_MS;
@@ -1062,7 +1088,6 @@
 
       if (performance.now() - lastBellPlayMs < TURN_MUTE_LOCKOUT_MS) return;
       if (faceDownTriggeredThisRingWindow) return;
-      if (!faceDownZSign) return;
 
       const cosToDown = computeCosToDownFromEvent(event);
       if (cosToDown == null) return;
@@ -1485,7 +1510,7 @@
               let forward = dualForwardVec ? norm(dualForwardVec) : { x: 1, y: 0, z: 0, m: 1 };
               const sdot = dot(dirN, forward);
 
-              // Visual direction matches hemisphere logic: forward side vs opposite side
+              // Visual direction matches hemisphere logic
               const visualDir = sdot >= 0 ? "left" : "right";
 
               if (sdot >= 0) {
@@ -1638,7 +1663,6 @@
     function addPressHandler(el, fn) {
       if (window.PointerEvent) {
         el.addEventListener("pointerdown", (e) => {
-          // ignore non-primary mouse buttons
           if (e.pointerType === "mouse" && e.button !== 0) return;
           fn();
         });
