@@ -752,7 +752,7 @@
     let volumeMaxGain = 1.0; // fixed at 1.0 now (no external gain slider)
 
     const noteBuffers = new Map();
-    the:/// noteBufferPromises = new Map();
+    const noteBufferPromises = new Map();
     let preloadAllNotesPromise = null;
 
     function ensureAudioCtx() {
@@ -1323,15 +1323,13 @@
       return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
 
-    // ---- MOTION HANDLING (jerk-based ring, old-style fire + cooldown, new direction) ----
+    // ---- MOTION HANDLING (jerk-based ring, old-style firing + cooldown, direction from pre-jerk gyro) ----
     let lastRingTime = 0;
 
-    const MIN_INTERVAL   = 140;   // ms between rings (prevents double fire)
+    const MIN_INTERVAL   = 140;   // ms between rings (cooldown)
     const DELTA_RING_MIN = 3.0;   // minimum "jerk" needed to ring
     const DELTA_RING_MAX = 10.0;  // clamp for intensity
-    const RESET_DELTA    = 1.5;   // under this, swing considered calm
 
-    let inSwing = false;
     let lastMagnitude = null;
     let lastDelta = 0;
     let lastAx = null, lastAy = null, lastAz = null;
@@ -1348,7 +1346,7 @@
       checkFaceDownOnly(event);
       updateFaceUpWindow(event, nowMs);
 
-      // --- gyro for direction ---
+      // --- gyro for direction (used on the *next* frame if we cross jerk threshold) ---
       const rr = event.rotationRate;
       let currGyroDir = null;
       if (rr) {
@@ -1386,17 +1384,10 @@
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
 
-      // Old-style: below small delta → reset swing; above threshold + cooldown → fire
-      if (absDelta < RESET_DELTA) {
-        inSwing = false;
-      }
+      const timeSinceLastRing = nowMs - lastRingTime;
 
-      const canFire = (!inSwing &&
-                       absDelta >= DELTA_RING_MIN &&
-                       (nowMs - lastRingTime) > MIN_INTERVAL);
-
-      if (canFire) {
-        inSwing = true;
+      // ---- Old-style firing logic: jerk threshold + cooldown ----
+      if (absDelta >= DELTA_RING_MIN && timeSinceLastRing > MIN_INTERVAL) {
         lastRingTime = nowMs;
 
         const peak = absDelta;
@@ -1405,7 +1396,8 @@
 
         ensureWakeLock();
 
-        // Use gyro direction from the frame *before* the jerk
+        // Use gyro direction from the frame *before* the jerk (lastGyroDir),
+        // falling back to current gyro, then calibration forward, then +X.
         let dirVec = lastGyroDir || currGyroDir || dualForwardVec || { x: 1, y: 0, z: 0 };
         let dirN = norm(dirVec);
         if (dirN.m === 0) dirN = { x: 1, y: 0, z: 0, m: 1 };
@@ -1420,7 +1412,7 @@
         const faceUpMajor = majorityFaceUp();
 
         if (!secondNote) {
-          // Single bell, but visual still tracks forward/back
+          // Single bell, still respect forward/back for the visual
           playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
         } else {
           // Dual bells
@@ -1462,6 +1454,7 @@
         }
       }
 
+      // Update history for next frame
       lastMagnitude = magnitude;
       lastDelta = signedDelta;
       lastAx = ax; lastAy = ay; lastAz = az;
@@ -1472,7 +1465,6 @@
       lastMagnitude = null;
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
-      inSwing = false;
       lastGyroDir = null;
       faceUpSamples = [];
 
@@ -1484,7 +1476,6 @@
       lastMagnitude = null;
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
-      inSwing = false;
       lastGyroDir = null;
       faceUpSamples = [];
 
