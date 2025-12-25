@@ -979,7 +979,7 @@
     const CALIB_NEAR_FLAT_COS = Math.cos((55 * Math.PI) / 180);
     const CALIB_GRAV_DELTA_MAX = 0.30;
 
-    const FACEUP_WINDOW_MS = 500;
+    const FACEUP_WINDOW_MS = 320;
     const FACE_ANGLE_RAD = (FACE_DOWN_MAX_TILT_DEG * Math.PI) / 180;
     const COS_FACE_THRESHOLD = Math.cos(FACE_ANGLE_RAD);
     let faceUpSamples = []; // { t, up }
@@ -1065,11 +1065,24 @@
     }
 
     // HYBRID: use calibration sign when available, otherwise raw gz
+    // with gating so swings don't corrupt orientation
     function computeCosToDownFromEvent(event) {
       const g = event.accelerationIncludingGravity;
       if (!g || g.x == null || g.y == null || g.z == null) return null;
 
       const gx = g.x || 0, gy = g.y || 0, gz = g.z || 0;
+
+      // Ignore frames with significant linear acceleration (mid-swing)
+      let linearMag = 0;
+      if (event.acceleration &&
+          (event.acceleration.x != null ||
+           event.acceleration.y != null ||
+           event.acceleration.z != null)) {
+        linearMag = getAccelMag(event.acceleration);
+      }
+      // 1.2 m/s² is a gentle-move threshold; tweak if needed
+      if (linearMag > 1.2) return null;
+
       let z = gz;
 
       // If calibration has set faceDownZSign, align Z so that +1 ≈ face-down
@@ -1078,7 +1091,8 @@
       }
 
       const gmag = Math.sqrt(gx*gx + gy*gy + z*z);
-      if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return null;
+      // Ignore too small or too large "gravity" magnitudes (likely swing noise)
+      if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG || gmag > 12.0) return null;
 
       // +1 ≈ face-down, -1 ≈ face-up in the user's real-world frame
       return z / gmag;
