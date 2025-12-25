@@ -1416,20 +1416,24 @@
       return v.z > 0 ? "up" : "down";
     }
 
-    // ---- MOTION HANDLING (jerk-based ring, direction from pre-jerk gyro) ----
+    // ---- MOTION HANDLING (jerk-based ring with 50ms reversal window) ----
     let lastRingTime = 0;
 
     const MIN_INTERVAL   = 150;   // ms between rings (prevents double fire)
-    const DELTA_RING_MIN = 4.0;   // slightly easier to trigger than 5.0
+    const DELTA_RING_MIN = 5.0;   // minimum "jerk" needed to ring
     const DELTA_RING_MAX = 10.0;  // clamp for intensity
     const RESET_DELTA    = 1.0;   // under this, swing considered calm
-    const BIG_HIT_DELTA  = 7.0;   // large single-frame spike can ring even w/o sign flip
+    const REVERSAL_WINDOW_MS = 50; // max time between build and reversal
 
     let inSwing = false;
-    let swingHandled = false;     // NEW: track if this swing already caused a ring
     let lastMagnitude = null;
-    let lastDelta = 0;
     let lastAx = null, lastAy = null, lastAz = null;
+
+    // Track the strongest jerk in the current direction
+    // { timeMs, delta }
+    let swingPeak = null;
+    // Gyro direction associated with that peak (pre-jerk-ish)
+    let swingPeakDir = null;
 
     // direction: we use the gyro direction from the frame *before* the jerk
     let lastGyroDir = null; // normalized {x,y,z}
@@ -1480,105 +1484,138 @@
 
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
+      const currSign = Math.sign(signedDelta);
 
-      // When motion is calm, reset swing state so we can ring again on the next swing.
+      // If things are calm, reset swing state
       if (absDelta < RESET_DELTA) {
         inSwing = false;
-        swingHandled = false;
-      }
+        swingPeak = null;
+        swingPeakDir = null;
+      } else {
+        const now = nowMs;
 
-      const prevSign = Math.sign(lastDelta);
-      const currSign = Math.sign(signedDelta);
-      const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
-      const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
-      const justReversed = wasBuilding && changedDirection;
+        // Initialize or update the peak for the current swing direction
+        if (!swingPeak || Math.sign(swingPeak.delta) === 0) {
+          // Start a new swing peak
+          swingPeak = { timeMs: now, delta: signedDelta };
+          // Use the direction from the frame *before* this one if available
+          swingPeakDir = lastGyroDir || currGyroDir || null;
+        } else {
+          const peakSign = Math.sign(swingPeak.delta);
 
-      // Treat a big single-frame spike as a valid "big hit"
-      const bigHit = absDelta >= BIG_HIT_DELTA;
-
-      if (!inSwing && !swingHandled && nowMs - lastRingTime > MIN_INTERVAL && (justReversed || bigHit)) {
-        // If we got a reversal, use the previous peak; otherwise use this frame’s big spike
-        const peak = justReversed ? Math.abs(lastDelta) : absDelta;
-
-        if (peak >= DELTA_RING_MIN) {
-          inSwing = true;
-          swingHandled = true;  // mark this swing as already handled
-          lastRingTime = nowMs;
-
-          const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
-          const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
-
-          ensureWakeLock();
-
-          // Use gyro direction from the frame *before* the jerk
-          let dirVec = lastGyroDir || currGyroDir || dualForwardVec || { x: 1, y: 0, z: 0 };
-          let dirN = norm(dirVec);
-          if (dirN.m === 0) dirN = { x: 1, y: 0, z: 0, m: 1 };
-
-          const faceUpMajor = majorityFaceUp();
-
-          if (!secondNote) {
-            // Single bell: visuals based on pre-jerk direction
-            const visualDir = computeVisualDirFromGyro(dirN);
-            playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+          if (currSign === peakSign || currSign === 0) {
+            // Same direction as existing peak (or neutral) → update if stronger
+            if (absDelta > Math.abs(swingPeak.delta)) {
+              swingPeak = { timeMs: now, delta: signedDelta };
+              swingPeakDir = lastGyroDir || currGyroDir || swingPeakDir;
+            }
           } else {
-            if (faceUpMajor) {
-              // Face up → always ring both; visuals still use pre-jerk direction
-              const visualDir = computeVisualDirFromGyro(dirN);
-              playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
-              playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
-            } else if (dualCalibrating) {
-              // Calibration: use pre-jerk direction to stabilize "away from you"
-              if (dirN.m > 0) {
-                if (!dualForwardVec) {
-                  dualForwardVec = { x: dirN.x, y: dirN.y, z: dirN.z };
-                  dualCalibCount = 1;
-                } else {
-                  const sdotCal = dot(dirN, dualForwardVec);
-                  if (sdotCal >= 0) {
-                    dualCalibCount++;
-                  } else {
-                    dualForwardVec = { x: dirN.x, y: dirN.y, z: dirN.z };
-                    dualCalibCount = 1;
-                  }
-                }
-                calibProgress.textContent = String(dualCalibCount);
-                if (dualCalibCount >= 3) {
-                  dualForwardVec = norm(dualForwardVec);
-                  finishDualCalibration();
-                }
-              }
-              // No sound during calibration
-            } else {
-              // Normal dual play: decide hemisphere by sign of dot(dir, forward)
-              let forward = dualForwardVec ? norm(dualForwardVec) : { x: 1, y: 0, z: 0, m: 1 };
-              const sdot = dot(dirN, forward);
+            // Opposite sign → potential reversal
+            const dt = now - swingPeak.timeMs;
+            const peakMag = Math.abs(swingPeak.delta);
 
-              // Visual direction matches hemisphere logic
-              const visualDir = sdot >= 0 ? "left" : "right";
+            const reversalInWindow =
+              dt <= REVERSAL_WINDOW_MS &&
+              peakMag >= DELTA_RING_MIN;
 
-              if (sdot >= 0) {
+            if (
+              reversalInWindow &&
+              !inSwing &&
+              now - lastRingTime > MIN_INTERVAL
+            ) {
+              inSwing = true;
+              lastRingTime = now;
+
+              const peakForIntensity = Math.max(peakMag, absDelta);
+              const clamped = Math.min(
+                Math.max(peakForIntensity, DELTA_RING_MIN),
+                DELTA_RING_MAX
+              );
+              const intensity =
+                (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
+
+              ensureWakeLock();
+
+              // Direction anchored to the peak (pre-jerk frame)
+              let dirVec =
+                swingPeakDir ||
+                lastGyroDir ||
+                currGyroDir ||
+                dualForwardVec ||
+                { x: 1, y: 0, z: 0 };
+
+              let dirN = norm(dirVec);
+              if (dirN.m === 0) dirN = { x: 1, y: 0, z: 0, m: 1 };
+
+              const faceUpMajor = majorityFaceUp();
+
+              if (!secondNote) {
+                const visualDir = computeVisualDirFromGyro(dirN);
                 playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
               } else {
-                playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+                if (faceUpMajor) {
+                  const visualDir = computeVisualDirFromGyro(dirN);
+                  playBellToRingEl(currentNote,  bellRingLeft,  intensity, visualDir);
+                  playBellToRingEl(secondNote,   bellRingRight, intensity, visualDir);
+                } else if (dualCalibrating) {
+                  // Calibration: learn forward from pre-jerk direction
+                  if (dirN.m > 0) {
+                    if (!dualForwardVec) {
+                      dualForwardVec = { x: dirN.x, y: dirN.y, z: dirN.z };
+                      dualCalibCount = 1;
+                    } else {
+                      const sdotCal = dot(dirN, dualForwardVec);
+                      if (sdotCal >= 0) {
+                        dualCalibCount++;
+                      } else {
+                        dualForwardVec = { x: dirN.x, y: dirN.y, z: dirN.z };
+                        dualCalibCount = 1;
+                      }
+                    }
+                    calibProgress.textContent = String(dualCalibCount);
+                    if (dualCalibCount >= 3) {
+                      dualForwardVec = norm(dualForwardVec);
+                      finishDualCalibration();
+                    }
+                  }
+                } else {
+                  // Normal dual-bell mapping
+                  let forward = dualForwardVec ? norm(dualForwardVec) : { x: 1, y: 0, z: 0, m: 1 };
+                  const sdot = dot(dirN, forward);
+                  const visualDir = sdot >= 0 ? "left" : "right";
+
+                  if (sdot >= 0) {
+                    playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+                  } else {
+                    playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+                  }
+                }
               }
+
+              // Reset swing state after ringing
+              inSwing = false;
+              swingPeak = null;
+              swingPeakDir = null;
+            } else {
+              // Reversal but outside window or too weak → new swing in this direction
+              swingPeak = { timeMs: now, delta: signedDelta };
+              swingPeakDir = lastGyroDir || currGyroDir || null;
             }
           }
         }
       }
 
       lastMagnitude = magnitude;
-      lastDelta = signedDelta;
       lastAx = ax; lastAy = ay; lastAz = az;
       lastGyroDir = currGyroDir;
     }
 
     function startMotionListening() {
       lastMagnitude = null;
-      lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
-      swingHandled = false;
+      swingPeak = null;
+      swingPeakDir = null;
       lastGyroDir = null;
       faceUpSamples = [];
 
@@ -1588,10 +1625,10 @@
     function stopMotionListening() {
       window.removeEventListener("devicemotion", handleMotion);
       lastMagnitude = null;
-      lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
-      swingHandled = false;
+      swingPeak = null;
+      swingPeakDir = null;
       lastGyroDir = null;
       faceUpSamples = [];
 
@@ -1734,7 +1771,7 @@
       }
     }
 
-    // Tap-to-ring: uses addPressHandler so both bells can be pressed at once
+    // Tap-to-ring: now uses addPressHandler so both bells can be pressed at once
     addPressHandler(playNoteLeft, () => {
       if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
