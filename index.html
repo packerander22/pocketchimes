@@ -539,6 +539,7 @@
 <body>
   <img class="global-logo" src="/favicons/favicon_512_transparent.png" alt="PocketChimes bell logo" />
 
+  <!-- Motion permission / intro -->
   <div class="app" id="motion-screen" role="main">
     <div class="card">
       <div class="title">PocketChimes</div>
@@ -552,6 +553,7 @@
 
   <button class="top-btn add-mode-back" id="add-mode-back" type="button">← Back</button>
 
+  <!-- Note selection -->
   <div class="app" id="note-screen" style="display:none;" role="main">
     <div class="note-card">
       <div class="note-title" id="note-title">Choose your note</div>
@@ -563,6 +565,7 @@
     </div>
   </div>
 
+  <!-- Damping slider -->
   <div class="sustain-control" id="sustain-wrapper" aria-label="Damping control">
     <div class="sustain-header">
       <span class="sustain-title">Damping</span>
@@ -581,6 +584,7 @@
     <div class="sustain-hint">10 = Least Damped · 1 = Most Damped</div>
   </div>
 
+  <!-- Play screen (dual bells) -->
   <div class="play-screen" id="play-screen" role="main">
     <button class="top-btn back-btn" id="back-btn" type="button">← Notes</button>
 
@@ -639,6 +643,7 @@
   </div>
 
   <script>
+    // ---- Viewport fix ----
     function setVhUnit() {
       document.documentElement.style.setProperty("--vh", `${window.innerHeight * 0.01}px`);
     }
@@ -744,7 +749,7 @@
 
     // ---- AUDIO ----
     let audioCtx = null;
-    let volumeMaxGain = 1.0;
+    let volumeMaxGain = 1.0; // fixed at 1.0 now (no external gain slider)
 
     const noteBuffers = new Map();
     const noteBufferPromises = new Map();
@@ -880,7 +885,7 @@
       return { floor, tc };
     }
 
-    // ---- FACE-DOWN MUTE + CALIBRATION ----
+    // ---- FACE-DOWN MUTE + FACE-UP WINDOW ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
 
@@ -902,11 +907,10 @@
     const CALIB_NEAR_FLAT_COS = Math.cos((55 * Math.PI) / 180);
     const CALIB_GRAV_DELTA_MAX = 0.30;
 
-    let faceUpLatchedUntilMs = 0;
-    const FACEUP_LATCH_HOLD_MS = 320;
-    const FACEUP_ENTER_COS = -0.82;
-    const FACEUP_EXIT_COS  = -0.60;
-    let faceUpState = false;
+    const FACEUP_WINDOW_MS = 200;
+    const FACE_ANGLE_RAD = (FACE_DOWN_MAX_TILT_DEG * Math.PI) / 180;
+    const COS_FACE_THRESHOLD = Math.cos(FACE_ANGLE_RAD);
+    let faceUpSamples = []; // { t, up }
 
     function getAccelMag(a) {
       if (!a) return Infinity;
@@ -996,34 +1000,34 @@
       const gx = g.x || 0, gy = g.y || 0, gz = g.z || 0;
 
       const gzNorm = gz * faceDownZSign;
-      const gmag = Math.sqrt(gx*gx + gy*gy + gzNorm*gzNorm);
+      const gmag = Math.sqrt(gx*gx + gy*gy + gzNorm*gz*1.0);
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return null;
 
       if (Math.abs(gzNorm) < 0.55 * gmag) return null;
 
-      return (gzNorm / gmag); // +1 = down, -1 = up
+      return (gzNorm / gmag); // +1 = face-down, -1 = face-up
     }
 
-    function updateFaceUpLatch(event, nowMs) {
+    function updateFaceUpWindow(event, nowMs) {
       const cosToDown = computeCosToDownFromEvent(event);
       if (cosToDown == null) return;
 
-      if (!faceUpState) {
-        if (cosToDown <= FACEUP_ENTER_COS) {
-          faceUpState = true;
-          faceUpLatchedUntilMs = nowMs + FACEUP_LATCH_HOLD_MS;
-        }
-      } else {
-        if (cosToDown <= FACEUP_EXIT_COS) {
-          faceUpLatchedUntilMs = nowMs + FACEUP_LATCH_HOLD_MS;
-        } else if (nowMs > faceUpLatchedUntilMs) {
-          faceUpState = false;
-        }
+      const isUp = (cosToDown <= -COS_FACE_THRESHOLD); // mirror of face-down mute angle
+      faceUpSamples.push({ t: nowMs, up: isUp });
+
+      const cutoff = nowMs - FACEUP_WINDOW_MS;
+      while (faceUpSamples.length && faceUpSamples[0].t < cutoff) {
+        faceUpSamples.shift();
       }
     }
 
-    function isFaceUpLatched(nowMs) {
-      return faceUpState && nowMs <= faceUpLatchedUntilMs;
+    function majorityFaceUp() {
+      if (!faceUpSamples.length) return false;
+      let upCount = 0;
+      for (const s of faceUpSamples) {
+        if (s.up) upCount++;
+      }
+      return upCount >= (faceUpSamples.length / 2);
     }
 
     function checkFaceDownOnly(event) {
@@ -1033,17 +1037,13 @@
       }
 
       if (performance.now() - lastBellPlayMs < TURN_MUTE_LOCKOUT_MS) return;
-
       if (faceDownTriggeredThisRingWindow) return;
       if (!faceDownZSign) return;
 
       const cosToDown = computeCosToDownFromEvent(event);
       if (cosToDown == null) return;
 
-      const maxTiltRad = (FACE_DOWN_MAX_TILT_DEG * Math.PI) / 180;
-      const cosThreshold = Math.cos(maxTiltRad);
-
-      if (cosToDown >= cosThreshold) {
+      if (cosToDown >= COS_FACE_THRESHOLD) {
         faceDownTriggeredThisRingWindow = true;
         applyAggressiveDampToActiveRings();
       }
@@ -1075,7 +1075,7 @@
       });
     }
 
-    // ---- ONE-TIME CALIBRATION LISTENER ----
+    // ---- ONE-TIME ORIENTATION CALIBRATION LISTENER ----
     let calibrationListening = false;
     let calibrationCompleted = false;
 
@@ -1107,17 +1107,14 @@
       }
     }
 
-    // ---- Dual-bell state + calibration (forward vs opposite) ----
+    // ---- Dual-bell state + forward calibration (gyro-based) ----
     let currentNote = null;
     let secondNote = null;
 
     let dualCalibrating = false;
     let dualCalibCount = 0;
+    let dualForwardVec = null; // normalized "away from you" direction (device-space gyro)
 
-    // normalized direction for "Away From You"
-    let dualForwardVec = null;
-
-    // Skip gating: user must click Info first
     let skipUnlocked = false;
 
     function resetDualMode() {
@@ -1148,7 +1145,11 @@
     }
 
     function finishDualCalibration() {
-      if (!dualForwardVec) dualForwardVec = { x: 1, y: 0, z: 0 };
+      if (!dualForwardVec) {
+        dualForwardVec = { x: 1, y: 0, z: 0 };
+      } else {
+        dualForwardVec = norm(dualForwardVec);
+      }
       dualCalibrating = false;
       calibToast.classList.remove("active");
     }
@@ -1166,11 +1167,13 @@
 
     function setDualUI() {
       paneRight.classList.remove("hidden");
-      playScreen.style.background =
-        `linear-gradient(90deg, ${currentNote.color} 0%, ${currentNote.color} 50%, ${secondNote.color} 50%, ${secondNote.color} 100%)`;
+      if (currentNote && secondNote) {
+        playScreen.style.background =
+          `linear-gradient(90deg, ${currentNote.color} 0%, ${currentNote.color} 50%, ${secondNote.color} 50%, ${secondNote.color} 100%)`;
+      }
     }
 
-    // ---- Add-bell mode uses the SAME note screen ----
+    // ---- Add-bell note screen text ----
     let noteSelectMode = "primary";
 
     function setNoteScreenTextForMode(mode) {
@@ -1194,7 +1197,6 @@
       noteScreen.style.display = "block";
 
       sustainWrapper.classList.remove("active");
-
       addModeBack.classList.toggle("active", mode === "secondary");
 
       topRightStack.classList.remove("active");
@@ -1238,16 +1240,14 @@
     // ---- HAPTIC ----
     function bigHapticBump() {
       try {
-        if (navigator.vibrate) navigator.vibrate([40, 18, 55]);
+        if (navigator.vibrate) navigator.vibrate([18, 8, 22]); // short, strong-ish blip
       } catch (e) {}
     }
 
-    // ---- Play bell sample ----
+    // ---- Play bell sample & visuals ----
     async function playBellToRingEl(note, ringEl, intensity = 1, visualDir = null) {
       if (!note) return;
 
-      // tiny but strong blip — we still keep the bigger pattern for tap-to-ring,
-      // but motion-based rings later overwrite this with a shorter vibrate(12)
       bigHapticBump();
 
       ensureAudioCtx();
@@ -1294,6 +1294,7 @@
 
       lastBellPlayMs = performance.now();
 
+      // visuals
       const t = Math.min(Math.max(intensity, 0), 1);
       const minOffset = 10;
       const maxOffset = 32;
@@ -1314,243 +1315,188 @@
       }
     }
 
-    // ---- MOTION HANDLING (ACCEL JERK + 200ms DIRECTION WINDOW) ----
-    const SWING_WINDOW_MS = 20;   // direction history
-    const FACEUP_WINDOW_MS = 250;  // face-up history
-
-    const JERK_BUILD_MIN   = 1.5;  // min prior delta to count as "building"
-    const JERK_TRIGGER_MIN = 3.0;  // jerk strength to actually fire
-    const JERK_RESET_DELTA = 1.0;  // below this, treat as calm
-    const MIN_RING_INTERVAL_MS = 200;
-
-    const FACEUP_UP_COS = 0.55;    // cos threshold for "clearly face up"
-
-    let lastAccelMag = null;
-    let lastDelta = 0;
-    let lastAx = null, lastAy = null, lastAz = null;
-    let lastRingMs = 0;
-
-    let directionHistory = []; // { t, vec }
-    let faceUpHistory = [];    // { t, up }
-
-    function dot(a, b) {
-      return a.x * b.x + a.y * b.y + a.z * b.z;
-    }
-
+    // ---- Utility for vectors ----
+    function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
     function norm(v) {
       const m = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
       if (!isFinite(m) || m < 1e-6) return { x: 0, y: 0, z: 0, m: 0 };
-      return { x: v.x / m, y: v.y / m, z: v.z / m, m };
+      return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
 
-    function updateHistories(nowMs, event, isJerkFrame) {
-      // Face-up history: orientation from gravity
-      const cosToDown = computeCosToDownFromEvent(event);
-      if (cosToDown !== null) {
-        const isUp = (cosToDown <= -FACEUP_UP_COS);
-        faceUpHistory.push({ t: nowMs, up: isUp });
-      }
+    function computeVisualDirFromGyro(v) {
+      const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
+      const m = Math.max(ax, ay, az);
+      if (m < 1) return Math.random() < 0.5 ? "left" : "right";
 
-      // Direction history: gyro, BUT SKIP jerk frame itself
-      const rr = event.rotationRate;
-      if (!isJerkFrame && rr) {
-        const omega = {
-          x: rr.beta  || 0,
-          y: rr.gamma || 0,
-          z: rr.alpha || 0
-        };
-        directionHistory.push({ t: nowMs, vec: omega });
-      }
-
-      // Trim histories
-      const swingCutoff = nowMs - SWING_WINDOW_MS;
-      directionHistory = directionHistory.filter(s => s.t >= swingCutoff);
-
-      const faceUpCutoff = nowMs - FACEUP_WINDOW_MS;
-      faceUpHistory = faceUpHistory.filter(s => s.t >= faceUpCutoff);
+      if (m === ax) return v.x > 0 ? "left" : "right";
+      if (m === ay) return v.y > 0 ? "up" : "down";
+      return v.z > 0 ? "up" : "down";
     }
 
-    function majorityFaceUp(nowMs) {
-      const cutoff = nowMs - FACEUP_WINDOW_MS;
-      const samples = faceUpHistory.filter(s => s.t >= cutoff);
-      if (!samples.length) return false;
-      let upCount = 0;
-      for (const s of samples) if (s.up) upCount++;
-      return upCount >= samples.length / 2;
-    }
+    // ---- MOTION HANDLING (jerk-based ring, direction from pre-jerk gyro) ----
+    let lastRingTime = 0;
 
-    function decideDirection(nowMs) {
-      const cutoff = nowMs - SWING_WINDOW_MS;
-      const samples = directionHistory.filter(s => s.t >= cutoff);
-      directionHistory = samples;
+    const MIN_INTERVAL   = 140;   // ms between rings (prevents double fire)
+    const DELTA_RING_MIN = 3.0;   // minimum "jerk" needed to ring
+    const DELTA_RING_MAX = 10.0;  // clamp for intensity
+    const RESET_DELTA    = 1.5;   // under this, swing considered calm
 
-      if (!samples.length) return "primary";
+    let inSwing = false;
+    let lastMagnitude = null;
+    let lastDelta = 0;
+    let lastAx = null, lastAy = null, lastAz = null;
 
-      const f = dualForwardVec || { x: 1, y: 0, z: 0 };
-      let sum = 0;
-
-      for (const s of samples) {
-        const n = norm(s.vec);
-        if (n.m <= 0) continue;
-        sum += dot(n, f);
-      }
-
-      // No deadzone: tie goes to primary
-      return sum >= 0 ? "secondary" : "primary";
-    }
+    // direction: we use the gyro direction from the frame *before* the jerk
+    let lastGyroDir = null; // normalized {x,y,z}
 
     function handleMotion(event) {
       if (!currentNote) return;
 
       const nowMs = performance.now();
 
-      // Face-down mute uses accel+gravity
+      // Face-down mute & face-up sliding window
       checkFaceDownOnly(event);
+      updateFaceUpWindow(event, nowMs);
 
-      // Base accel for jerk (prefer linear accel if present)
+      // --- gyro for direction ---
+      const rr = event.rotationRate;
+      let currGyroDir = null;
+      if (rr) {
+        const omega = {
+          x: rr.beta  || 0,
+          y: rr.gamma || 0,
+          z: rr.alpha || 0
+        };
+        const nf = norm(omega);
+        if (nf.m > 0) {
+          currGyroDir = { x: nf.x, y: nf.y, z: nf.z };
+        }
+      }
+
+      // --- acceleration for jerk / snap detection ---
       let acc = event.acceleration;
       if (!acc || (acc.x === null && acc.y === null && acc.z === null)) {
         acc = event.accelerationIncludingGravity;
       }
       if (!acc) {
-        updateHistories(nowMs, event, false);
+        lastGyroDir = currGyroDir;
         return;
       }
 
-      const ax = acc.x || 0;
-      const ay = acc.y || 0;
-      const az = acc.z || 0;
-      const mag = Math.sqrt(ax*ax + ay*ay + az*az);
+      const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
+      const magnitude = Math.sqrt(ax*ax + ay*ay + az*az);
 
-      if (lastAccelMag === null) {
-        lastAccelMag = mag;
+      if (lastMagnitude === null || lastAx === null) {
+        lastMagnitude = magnitude;
         lastAx = ax; lastAy = ay; lastAz = az;
-        updateHistories(nowMs, event, false);
+        lastGyroDir = currGyroDir;
         return;
       }
 
-      const signedDelta = mag - lastAccelMag;
+      const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
+
+      if (absDelta < RESET_DELTA) inSwing = false;
 
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
-      const building = Math.abs(lastDelta) >= JERK_BUILD_MIN;
-      const reversed = (prevSign !== 0 && currSign !== 0 && currSign === -prevSign);
+      const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
+      const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
+      const justReversed = wasBuilding && changedDirection;
 
-      let isJerkFrame = false;
-      let shouldRing = false;
+      if (!inSwing && justReversed && nowMs - lastRingTime > MIN_INTERVAL) {
+        const peak = Math.abs(lastDelta);
+        if (peak >= DELTA_RING_MIN) {
+          inSwing = true;
+          lastRingTime = nowMs;
 
-      if (
-        building &&
-        reversed &&
-        absDelta >= JERK_TRIGGER_MIN &&
-        (nowMs - lastRingMs >= MIN_RING_INTERVAL_MS)
-      ) {
-        isJerkFrame = true;
-        shouldRing = true;
-        lastRingMs = nowMs;
-      }
+          const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
+          const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
 
-      // IMPORTANT: update histories AFTER we've decided jerk,
-      // and skip adding this frame to directionHistory if it is the jerk frame
-      updateHistories(nowMs, event, isJerkFrame);
+          ensureWakeLock();
 
-      // Reset / update build state
-      if (absDelta < JERK_RESET_DELTA) {
-        lastDelta = 0;
-      } else {
-        lastDelta = signedDelta;
-      }
+          // Use gyro direction from the frame *before* the jerk
+          let dirVec = lastGyroDir || currGyroDir || dualForwardVec || { x: 1, y: 0, z: 0 };
+          let dirN = norm(dirVec);
+          if (dirN.m === 0) dirN = { x: 1, y: 0, z: 0, m: 1 };
 
-      lastAccelMag = mag;
-      lastAx = ax; lastAy = ay; lastAz = az;
+          const visualDir = computeVisualDirFromGyro(dirN);
 
-      if (!shouldRing) return;
+          const faceUpMajor = majorityFaceUp();
 
-      // Intensity purely from jerk strength
-      const JERK_INTENSITY_MAX = 10.0;
-      const clamped = Math.min(Math.max(absDelta, JERK_TRIGGER_MIN), JERK_INTENSITY_MAX);
-      const intensity = (clamped - JERK_TRIGGER_MIN) / (JERK_INTENSITY_MAX - JERK_TRIGGER_MIN);
-
-      ensureWakeLock();
-
-      const isFaceUpMajority = majorityFaceUp(nowMs);
-
-      const rr = event.rotationRate || {};
-      const omega = {
-        x: rr.beta  || 0,
-        y: rr.gamma || 0,
-        z: rr.alpha || 0
-      };
-      const omegaN = norm(omega);
-
-      // Dual-bell calibration mode: jerk frame is the calibration sample, no audio
-      if (secondNote && dualCalibrating) {
-        if (omegaN.m > 0) {
-          if (!dualForwardVec) {
-            dualForwardVec = { x: omegaN.x, y: omegaN.y, z: omegaN.z };
-            dualCalibCount = 1;
+          if (!secondNote) {
+            // Single bell
+            playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
           } else {
-            const sdot = dot(omegaN, dualForwardVec);
-            if (sdot >= 0) {
-              dualCalibCount++;
+            // Dual bells
+            if (faceUpMajor) {
+              // Face up → always ring both (both manual + motion)
+              playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+              playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+            } else if (dualCalibrating) {
+              // Calibration: use pre-jerk direction to stabilize "away from you"
+              if (dirN.m > 0) {
+                if (!dualForwardVec) {
+                  dualForwardVec = { x: dirN.x, y: dirN.y, z: dirN.z };
+                  dualCalibCount = 1;
+                } else {
+                  const sdot = dot(dirN, dualForwardVec);
+                  if (sdot >= 0) {
+                    dualCalibCount++;
+                  } else {
+                    dualForwardVec = { x: dirN.x, y: dirN.y, z: dirN.z };
+                    dualCalibCount = 1;
+                  }
+                }
+                calibProgress.textContent = String(dualCalibCount);
+                if (dualCalibCount >= 3) {
+                  dualForwardVec = norm(dualForwardVec);
+                  finishDualCalibration();
+                }
+              }
+              // No sound during calibration
             } else {
-              dualForwardVec = { x: omegaN.x, y: omegaN.y, z: omegaN.z };
-              dualCalibCount = 1;
+              // Normal dual play: decide hemisphere by sign of dot(dir, forward)
+              let forward = dualForwardVec ? norm(dualForwardVec) : { x: 1, y: 0, z: 0, m: 1 };
+              const sdot = dot(dirN, forward);
+              if (sdot >= 0) {
+                playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+              } else {
+                playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+              }
             }
           }
-          calibProgress.textContent = String(dualCalibCount);
 
-          if (dualCalibCount >= 3) {
-            const nf = norm(dualForwardVec);
-            dualForwardVec = (nf.m > 0) ? { x: nf.x, y: nf.y, z: nf.z } : { x: 1, y: 0, z: 0 };
-            finishDualCalibration();
-          }
+          inSwing = false;
         }
-        return;
       }
 
-      // Motion-based haptic: minimal sharp blip
-      try {
-        if (navigator.vibrate) navigator.vibrate(12);
-      } catch (e) {}
-
-      if (secondNote) {
-        if (isFaceUpMajority && !dualCalibrating) {
-          // Overhead: ring both bells no matter direction
-          playBellToRingEl(currentNote, bellRingLeft, intensity, null);
-          playBellToRingEl(secondNote, bellRingRight, intensity, null);
-        } else {
-          const which = decideDirection(nowMs);
-          if (which === "primary") {
-            playBellToRingEl(currentNote, bellRingLeft, intensity, null);
-          } else {
-            playBellToRingEl(secondNote, bellRingRight, intensity, null);
-          }
-        }
-      } else {
-        // Single-bell mode
-        playBellToRingEl(currentNote, bellRingLeft, intensity, null);
-      }
+      lastMagnitude = magnitude;
+      lastDelta = signedDelta;
+      lastAx = ax; lastAy = ay; lastAz = az;
+      lastGyroDir = currGyroDir;
     }
 
     function startMotionListening() {
-      lastAccelMag = null;
+      lastMagnitude = null;
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
-      lastRingMs = 0;
-      directionHistory = [];
-      faceUpHistory = [];
+      inSwing = false;
+      lastGyroDir = null;
+      faceUpSamples = [];
+
       window.addEventListener("devicemotion", handleMotion, { passive: true });
     }
 
     function stopMotionListening() {
       window.removeEventListener("devicemotion", handleMotion);
-      lastAccelMag = null;
+      lastMagnitude = null;
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
-      directionHistory = [];
-      faceUpHistory = [];
+      inSwing = false;
+      lastGyroDir = null;
+      faceUpSamples = [];
+
       faceDownTriggeredThisRingWindow = false;
       activeRings.clear();
     }
@@ -1644,6 +1590,7 @@
       showPlayScreen();
     });
 
+    // Calibration info / skip gating
     calibInfoBtn.addEventListener("click", () => {
       alert(
         "If you can’t swing your device, you can skip calibration.\n\n" +
@@ -1658,19 +1605,19 @@
       skipDualCalibration();
     });
 
-    // Tap-to-ring (BLOCKED during dual calibration)
+    // Tap-to-ring: always allowed when notes exist (even in dual mode / calibration)
     playNoteLeft.addEventListener("click", () => {
-      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
+      if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
     bellVisualLeft.addEventListener("click", () => {
-      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
+      if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
 
     playNoteRight.addEventListener("click", () => {
-      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
+      if (secondNote) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
     bellVisualRight.addEventListener("click", () => {
-      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
+      if (secondNote) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
     function bindKeyActivate(el, fn) {
@@ -1682,10 +1629,10 @@
       });
     }
     bindKeyActivate(bellVisualLeft, () => {
-      if (currentNote && !(secondNote && dualCalibrating)) playBellToRingEl(currentNote, bellRingLeft, 1, null);
+      if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
     bindKeyActivate(bellVisualRight, () => {
-      if (secondNote && !dualCalibrating) playBellToRingEl(secondNote, bellRingRight, 1, null);
+      if (secondNote) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
     // Build note grid once; click behavior depends on mode
