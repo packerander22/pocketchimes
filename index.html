@@ -1420,9 +1420,10 @@
     let lastRingTime = 0;
 
     const MIN_INTERVAL   = 150;   // ms between rings (prevents double fire)
-    const DELTA_RING_MIN = 5.0;   // minimum "jerk" needed to ring
+    const DELTA_RING_MIN = 4.0;   // slightly easier to trigger than 5.0
     const DELTA_RING_MAX = 10.0;  // clamp for intensity
     const RESET_DELTA    = 1.0;   // under this, swing considered calm
+    const BIG_HIT_DELTA  = 7.0;   // large single-frame spike can ring even w/o sign flip
 
     let inSwing = false;
     let lastMagnitude = null;
@@ -1487,8 +1488,13 @@
       const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
       const justReversed = wasBuilding && changedDirection;
 
-      if (!inSwing && justReversed && nowMs - lastRingTime > MIN_INTERVAL) {
-        const peak = Math.abs(lastDelta);
+      // New: treat a big single-frame spike as a valid "big hit"
+      const bigHit = absDelta >= BIG_HIT_DELTA;
+
+      if (!inSwing && nowMs - lastRingTime > MIN_INTERVAL && (justReversed || bigHit)) {
+        // If we got a reversal, use the previous peak; otherwise use this frame’s big spike
+        const peak = justReversed ? Math.abs(lastDelta) : absDelta;
+
         if (peak >= DELTA_RING_MIN) {
           inSwing = true;
           lastRingTime = nowMs;
@@ -1506,7 +1512,7 @@
           const faceUpMajor = majorityFaceUp();
 
           if (!secondNote) {
-            // Single bell: visuals also based on pre-jerk direction
+            // Single bell: visuals based on pre-jerk direction
             const visualDir = computeVisualDirFromGyro(dirN);
             playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
           } else {
