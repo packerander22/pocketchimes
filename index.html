@@ -72,11 +72,11 @@
 
     .global-logo {
       position: fixed;
-      top: 0.4rem; /* moved a bit higher */
+      top: 1rem;               /* top gap */
       left: 50%;
       transform: translateX(-50%);
       width: 96px;
-      height: auto;
+      height: 96px;            /* fixed height so spacing math is exact */
       z-index: 20;
       pointer-events: none;
     }
@@ -85,7 +85,8 @@
       width: 100%;
       max-width: 480px;
       margin: auto;
-      padding: 4.3rem 1.2rem 2.5rem; /* more top padding so logo doesn't overlap content */
+      /* top padding = topGap + logoHeight + bottomGap (same as topGap) */
+      padding: calc(1rem + 96px + 1rem) 1.2rem 2.5rem;
     }
 
     .card,
@@ -519,7 +520,14 @@
     }
 
     @media (orientation: landscape) {
-      .global-logo { top: 0.2rem; width: 78px; }
+      .global-logo {
+        top: 0.5rem;
+        width: 78px;
+        height: 78px;
+      }
+      .app {
+        padding: calc(0.5rem + 78px + 0.5rem) 1.2rem 2.5rem;
+      }
       .play-note-label { font-size: 2.6rem; }
       .hint-text { margin-bottom: 0.4rem; }
       .play-screen { padding-bottom: calc(1.2rem + 96px); }
@@ -1626,21 +1634,50 @@
       skipDualCalibration();
     });
 
-    // Tap-to-ring: always allowed when notes exist (even in dual mode / calibration)
-    playNoteLeft.addEventListener("click", () => {
+    // ---- Multi-touch friendly press handler (for both bells) ----
+    function addPressHandler(el, fn) {
+      if (window.PointerEvent) {
+        el.addEventListener("pointerdown", (e) => {
+          // ignore non-primary mouse buttons
+          if (e.pointerType === "mouse" && e.button !== 0) return;
+          fn();
+        });
+      } else {
+        let touchFired = false;
+        el.addEventListener(
+          "touchstart",
+          () => {
+            touchFired = true;
+            fn();
+          },
+          { passive: true }
+        );
+        el.addEventListener("click", () => {
+          if (touchFired) {
+            touchFired = false;
+            return;
+          }
+          fn();
+        });
+      }
+    }
+
+    // Tap-to-ring: now uses addPressHandler so both bells can be pressed at once
+    addPressHandler(playNoteLeft, () => {
       if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
-    bellVisualLeft.addEventListener("click", () => {
+    addPressHandler(bellVisualLeft, () => {
       if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
 
-    playNoteRight.addEventListener("click", () => {
+    addPressHandler(playNoteRight, () => {
       if (secondNote) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
-    bellVisualRight.addEventListener("click", () => {
+    addPressHandler(bellVisualRight, () => {
       if (secondNote) playBellToRingEl(secondNote, bellRingRight, 1, null);
     });
 
+    // Keyboard accessibility
     function bindKeyActivate(el, fn) {
       el.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
