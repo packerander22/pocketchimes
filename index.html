@@ -1321,7 +1321,7 @@
     const JERK_BUILD_MIN   = 1.5;  // min prior delta to count as "building"
     const JERK_TRIGGER_MIN = 3.0;  // jerk strength to actually fire
     const JERK_RESET_DELTA = 1.0;  // below this, treat as calm
-    const MIN_RING_INTERVAL_MS = 110;
+    const MIN_RING_INTERVAL_MS = 200;
 
     const FACEUP_UP_COS = 0.55;    // cos threshold for "clearly face up"
 
@@ -1396,7 +1396,7 @@
       }
 
       // No deadzone: tie goes to primary
-      return sum >= 0 ? "primary" : "secondary";
+      return sum >= 0 ? "secondary" : "primary";
     }
 
     function handleMotion(event) {
