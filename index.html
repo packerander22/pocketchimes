@@ -72,7 +72,7 @@
 
     .global-logo {
       position: fixed;
-      top: 1.1rem;
+      top: 0.4rem; /* moved a bit higher */
       left: 50%;
       transform: translateX(-50%);
       width: 96px;
@@ -85,7 +85,7 @@
       width: 100%;
       max-width: 480px;
       margin: auto;
-      padding: 3rem 1.2rem 2.5rem;
+      padding: 4.3rem 1.2rem 2.5rem; /* more top padding so logo doesn't overlap content */
     }
 
     .card,
@@ -335,8 +335,8 @@
       max-width: 18rem;
       line-height: 1.5;
       margin-bottom: 0.8rem;
-      color: rgba(2,6,23,0.92);
-      text-shadow: 0 1px 0 rgba(255,255,255,0.22);
+      color: #000000;           /* simple black text */
+      text-shadow: none;        /* remove glow/shadow */
     }
 
     .calib-toast {
@@ -519,7 +519,7 @@
     }
 
     @media (orientation: landscape) {
-      .global-logo { top: 0.6rem; width: 78px; }
+      .global-logo { top: 0.2rem; width: 78px; }
       .play-note-label { font-size: 2.6rem; }
       .hint-text { margin-bottom: 0.4rem; }
       .play-screen { padding-bottom: calc(1.2rem + 96px); }
@@ -565,10 +565,10 @@
     </div>
   </div>
 
-  <!-- Damping slider -->
+  <!-- Sustain slider -->
   <div class="sustain-control" id="sustain-wrapper" aria-label="Damping control">
     <div class="sustain-header">
-      <span class="sustain-title">Damping</span>
+      <span class="sustain-title">Sustain</span>
       <span class="sustain-value" id="sustain-value-label">5</span>
     </div>
     <input
@@ -638,7 +638,7 @@
 
     <div class="hint-text">
       Swing your phone like a handbell.
-      Tap the note or bell if needed.
+      Tap the note or bell to ring.
     </div>
   </div>
 
@@ -675,18 +675,18 @@
 
     // ----- NOTE DEFINITIONS -----
     const PITCHES = [
-      { name: "C",  color: "#FF3B30" },
-      { name: "C#", color: "#FF2D92" },
-      { name: "D",  color: "#FF9500" },
-      { name: "D#", color: "#FFB300" },
-      { name: "E",  color: "#FFEB3B" },
-      { name: "F",  color: "#34C759" },
-      { name: "F#", color: "#00FF7F" },
-      { name: "G",  color: "#00C7BE" },
-      { name: "G#", color: "#00B0FF" },
-      { name: "A",  color: "#007AFF" },
-      { name: "A#", color: "#AF52DE" },
-      { name: "B",  color: "#5856D6" }
+      { name: "C",  color: "#F44336" },  // red
+      { name: "C#", color: "#FF69B4" },  // hot pink
+      { name: "D",  color: "#FF9800" },  // orange
+      { name: "D#", color: "#FFCC80" },  // light orange
+      { name: "E",  color: "#FFEB3B" },  // yellow
+      { name: "F",  color: "#4CAF50" },  // green
+      { name: "F#", color: "#8BC34A" },  // light green
+      { name: "G",  color: "#009688" },  // teal
+      { name: "G#", color: "#80CBC4" },  // light teal
+      { name: "A",  color: "#4169E1" },  // royal blue
+      { name: "A#", color: "#64B5F6" },  // light blue
+      { name: "B",  color: "#9C27B0" }   // purple
     ];
 
     const OCTAVES = [5, 6, 7];
@@ -746,6 +746,22 @@
     const sustainWrapper    = document.getElementById("sustain-wrapper");
     const sustainSlider     = document.getElementById("sustain-slider");
     const sustainValueLabel = document.getElementById("sustain-value-label");
+
+    const hintTextEl = document.querySelector(".hint-text");
+
+    const singleHintText =
+      "Swing your phone like a handbell. Tap the note or bell to ring.";
+    const dualHintText =
+      "Swing your phone like a handbell. After calibration, swings in your forward direction ring your first bell, the opposite direction rings your second. Hold the phone face-up to ring both at once. You can still tap either bell to ring.";
+
+    function updateHintText() {
+      if (!hintTextEl) return;
+      if (currentNote && secondNote) {
+        hintTextEl.textContent = dualHintText;
+      } else {
+        hintTextEl.textContent = singleHintText;
+      }
+    }
 
     // ---- AUDIO ----
     let audioCtx = null;
@@ -1112,7 +1128,7 @@
     let secondNote = null;
 
     let dualCalibrating = false;
-       let dualCalibCount = 0;
+    let dualCalibCount = 0;
     let dualForwardVec = null; // normalized "away from you" direction (device-space gyro)
 
     let skipUnlocked = false;
@@ -1163,6 +1179,7 @@
     function setSingleUI() {
       paneRight.classList.add("hidden");
       playScreen.style.background = currentNote ? currentNote.color : "#111827";
+      updateHintText();
     }
 
     function setDualUI() {
@@ -1171,6 +1188,7 @@
         playScreen.style.background =
           `linear-gradient(90deg, ${currentNote.color} 0%, ${currentNote.color} 50%, ${secondNote.color} 50%, ${secondNote.color} 100%)`;
       }
+      updateHintText();
     }
 
     // ---- Add-bell note screen text ----
@@ -1323,19 +1341,30 @@
       return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
 
-    // ---- MOTION HANDLING (jerk-based ring, simple threshold + cooldown, direction from pre-jerk gyro) ----
+    function computeVisualDirFromGyro(v) {
+      const ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
+      const m = Math.max(ax, ay, az);
+      if (m < 1) return Math.random() < 0.5 ? "left" : "right";
+
+      if (m === ax) return v.x > 0 ? "left" : "right";
+      if (m === ay) return v.y > 0 ? "up" : "down";
+      return v.z > 0 ? "up" : "down";
+    }
+
+    // ---- MOTION HANDLING (jerk-based ring, direction from pre-jerk gyro) ----
     let lastRingTime = 0;
 
-    const MIN_INTERVAL   = 140;   // ms between rings (cooldown)
+    const MIN_INTERVAL   = 140;   // ms between rings (prevents double fire)
     const DELTA_RING_MIN = 3.0;   // minimum "jerk" needed to ring
     const DELTA_RING_MAX = 10.0;  // clamp for intensity
-    const RESET_DELTA    = 1.5;   // tiny changes treated as calm / noise
+    const RESET_DELTA    = 1.5;   // under this, swing considered calm
 
+    let inSwing = false;
     let lastMagnitude = null;
     let lastDelta = 0;
     let lastAx = null, lastAy = null, lastAz = null;
 
-    // gyro direction from the frame BEFORE the jerk
+    // direction: we use the gyro direction from the frame *before* the jerk
     let lastGyroDir = null; // normalized {x,y,z}
 
     function handleMotion(event) {
@@ -1385,71 +1414,81 @@
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
 
-      // Old-style firing logic: simple jerk threshold + cooldown
-      if (
-        absDelta >= DELTA_RING_MIN &&
-        (nowMs - lastRingTime) > MIN_INTERVAL
-      ) {
-        lastRingTime = nowMs;
+      if (absDelta < RESET_DELTA) inSwing = false;
 
-        const clamped = Math.min(Math.max(absDelta, DELTA_RING_MIN), DELTA_RING_MAX);
-        const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
+      const prevSign = Math.sign(lastDelta);
+      const currSign = Math.sign(signedDelta);
+      const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
+      const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
+      const justReversed = wasBuilding && changedDirection;
 
-        ensureWakeLock();
+      if (!inSwing && justReversed && nowMs - lastRingTime > MIN_INTERVAL) {
+        const peak = Math.abs(lastDelta);
+        if (peak >= DELTA_RING_MIN) {
+          inSwing = true;
+          lastRingTime = nowMs;
 
-        // Use gyro direction from the frame *before* the jerk if possible
-        let dirVec = lastGyroDir || currGyroDir || dualForwardVec || { x: 1, y: 0, z: 0 };
-        let dirN = norm(dirVec);
-        if (dirN.m === 0) dirN = { x: 1, y: 0, z: 0, m: 1 };
+          const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
+          const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
 
-        // Forward vector (away-from-you) used for BOTH visual + which bell
-        let forward = dualForwardVec ? norm(dualForwardVec) : { x: 1, y: 0, z: 0, m: 1 };
-        const sdot = dot(dirN, forward);
+          ensureWakeLock();
 
-        // Visual uses the SAME forward/back verdict: forward = "down", backward = "up"
-        const visualDir = sdot >= 0 ? "down" : "up";
+          // Use gyro direction from the frame *before* the jerk
+          let dirVec = lastGyroDir || currGyroDir || dualForwardVec || { x: 1, y: 0, z: 0 };
+          let dirN = norm(dirVec);
+          if (dirN.m === 0) dirN = { x: 1, y: 0, z: 0, m: 1 };
 
-        const faceUpMajor = majorityFaceUp();
+          const faceUpMajor = majorityFaceUp();
 
-        if (!secondNote) {
-          // Single bell: just use direction for visual
-          playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
-        } else {
-          // Dual bells
-          if (faceUpMajor) {
-            // Face up → always ring both, same visual tilt
-            playBellToRingEl(currentNote,  bellRingLeft,  intensity, visualDir);
-            playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
-          } else if (dualCalibrating) {
-            // Calibration: use pre-jerk direction to stabilize "away from you"
-            if (dirN.m > 0) {
-              if (!dualForwardVec) {
-                dualForwardVec = { x: dirN.x, y: dirN.y, z: dirN.z };
-                dualCalibCount = 1;
-              } else {
-                const sdotCal = dot(dirN, dualForwardVec);
-                if (sdotCal >= 0) {
-                  dualCalibCount++;
-                } else {
+          if (!secondNote) {
+            // Single bell: visuals also based on pre-jerk direction
+            const visualDir = computeVisualDirFromGyro(dirN);
+            playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+          } else {
+            if (faceUpMajor) {
+              // Face up → always ring both; visuals still use pre-jerk direction
+              const visualDir = computeVisualDirFromGyro(dirN);
+              playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+              playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+            } else if (dualCalibrating) {
+              // Calibration: use pre-jerk direction to stabilize "away from you"
+              if (dirN.m > 0) {
+                if (!dualForwardVec) {
                   dualForwardVec = { x: dirN.x, y: dirN.y, z: dirN.z };
                   dualCalibCount = 1;
+                } else {
+                  const sdotCal = dot(dirN, dualForwardVec);
+                  if (sdotCal >= 0) {
+                    dualCalibCount++;
+                  } else {
+                    dualForwardVec = { x: dirN.x, y: dirN.y, z: dirN.z };
+                    dualCalibCount = 1;
+                  }
+                }
+                calibProgress.textContent = String(dualCalibCount);
+                if (dualCalibCount >= 3) {
+                  dualForwardVec = norm(dualForwardVec);
+                  finishDualCalibration();
                 }
               }
-              calibProgress.textContent = String(dualCalibCount);
-              if (dualCalibCount >= 3) {
-                dualForwardVec = norm(dualForwardVec);
-                finishDualCalibration();
+              // No sound during calibration
+            } else {
+              // Normal dual play: decide hemisphere by sign of dot(dir, forward)
+              let forward = dualForwardVec ? norm(dualForwardVec) : { x: 1, y: 0, z: 0, m: 1 };
+              const sdot = dot(dirN, forward);
+
+              // Visual direction matches hemisphere logic: forward side vs opposite side
+              const visualDir = sdot >= 0 ? "left" : "right";
+
+              if (sdot >= 0) {
+                playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+              } else {
+                playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
               }
             }
-            // No sound during calibration
-          } else {
-            // Normal dual play: sign of dot(dir, forward) decides which bell
-            if (sdot >= 0) {
-              playBellToRingEl(currentNote,  bellRingLeft,  intensity, visualDir);
-            } else {
-              playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
-            }
           }
+
+          inSwing = false;
         }
       }
 
@@ -1463,6 +1502,7 @@
       lastMagnitude = null;
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
+      inSwing = false;
       lastGyroDir = null;
       faceUpSamples = [];
 
@@ -1474,6 +1514,7 @@
       lastMagnitude = null;
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
+      inSwing = false;
       lastGyroDir = null;
       faceUpSamples = [];
 
