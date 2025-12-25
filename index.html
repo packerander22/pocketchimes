@@ -70,14 +70,14 @@
       position: relative;
     }
 
-    /* --- Logo with even tighter, symmetric spacing --- */
+    /* --- Logo with tighter, symmetric spacing --- */
     .global-logo {
       position: fixed;
-      top: 0.3rem;            /* less space above */
+      top: 0.3rem;            /* smaller top gap */
       left: 50%;
       transform: translateX(-50%);
-      width: 90px;
-      height: 90px;
+      width: 96px;
+      height: 96px;
       z-index: 20;
       pointer-events: none;
     }
@@ -86,8 +86,8 @@
       width: 100%;
       max-width: 480px;
       margin: auto;
-      /* symmetric: topGap + logo + bottomGap (bottomGap = topGap) */
-      padding: calc(0.3rem + 90px + 0.3rem) 1.2rem 2.5rem;
+      /* top padding = topGap + logoHeight + sameGap below */
+      padding: calc(0.3rem + 96px + 0.3rem) 1.2rem 2.5rem;
     }
 
     .card,
@@ -192,30 +192,27 @@
       display: none;
       flex-direction: column;
       align-items: center;
-      justify-content: center;  /* center the whole block vertically */
+      justify-content: flex-start;
       text-align: center;
       color: #020617;
       padding: 1.2rem;
-      padding-bottom: calc(1.2rem + 110px); /* still leave room for sustain slider */
+      padding-bottom: calc(1.2rem + 110px);
       background: #111827;
     }
 
     .play-screen.active { display: flex; }
 
-    /* Main content column (bells + instructions) centered as one unit */
+    /* Wrapper so bells stay vertically centered, description underneath */
     .play-main {
       flex: 1;
       display: flex;
       flex-direction: column;
-      justify-content: center;  /* vertically center bell + hint block */
-      align-items: center;
       width: 100%;
       max-width: 520px;
     }
 
-    /* No stretching: bell area just sits in the center */
     .bell-center-wrap {
-      flex: 0;
+      flex: 1;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -277,33 +274,34 @@
       align-items: stretch;
       justify-content: center;
       gap: 0;
-      margin-top: 0.2rem;
-      margin-bottom: 0.95rem;
+      margin-top: 0;        /* remove extra vertical offset */
+      margin-bottom: 0;     /* so the whole block can center */
       box-shadow: none;
       border-radius: 0;
       overflow: visible;
       background: transparent;
     }
 
+    /* New: flex layout so note + bell are centered, not pushed up */
     .dual-pane {
       flex: 1;
-      padding: 0.8rem 0.8rem 0.6rem;
-      display: grid;
-      grid-template-rows: var(--label-slot, 4.9rem) 170px auto;
+      padding: 0.6rem 0.8rem 0.4rem;
+      display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-items: center;
-      min-height: 320px;
+      justify-content: center;
+      min-height: 0;
     }
 
     .dual-pane.hidden { display: none; }
 
     .note-slot {
       width: 100%;
-      min-height: var(--label-slot, 4.9rem);
+      min-height: auto;      /* no forced tall label area */
       display: flex;
-      align-items: flex-end;
+      align-items: center;   /* center the letter vertically in its own row */
       justify-content: center;
-      padding-bottom: 0.55rem;
+      padding-bottom: 0.35rem;  /* slightly tighter spacing above bell */
     }
 
     .play-note-label {
@@ -356,7 +354,7 @@
       opacity: 0.9;
       max-width: 18rem;
       line-height: 1.5;
-      margin: 0 auto 0.8rem;
+      margin: 0.8rem auto 0.8rem;
       color: #000000;           /* simple black text */
       text-shadow: none;        /* no glow */
     }
@@ -542,17 +540,17 @@
 
     @media (orientation: landscape) {
       .global-logo {
-        top: 0.2rem;
+        top: 0.25rem;
         width: 78px;
         height: 78px;
       }
       .app {
-        padding: calc(0.2rem + 78px + 0.2rem) 1.2rem 2.5rem;
+        padding: calc(0.25rem + 78px + 0.25rem) 1.2rem 2.5rem;
       }
       .play-note-label { font-size: 2.6rem; }
       .hint-text { margin-bottom: 0.4rem; }
       .play-screen { padding-bottom: calc(1.2rem + 96px); }
-      .dual-pane { min-height: 240px; grid-template-rows: 4.2rem 160px auto; }
+      .dual-pane { padding: 0.4rem 0.6rem 0.3rem; }
     }
 
     @media (max-width: 400px) {
@@ -560,7 +558,6 @@
       .note-btn { padding: 0.55rem 0.25rem; }
       .sustain-control { width: min(340px, 92vw); }
       .play-screen { padding-bottom: calc(1.2rem + 106px); }
-      .dual-pane { min-height: 300px; }
     }
   </style>
 </head>
@@ -669,8 +666,7 @@
       </div>
 
       <div class="hint-text">
-        Swing your phone like a handbell.
-        Tap the note or bell to ring.
+        Swing your phone like a handbell. Tap the note or bell to ring.
       </div>
     </div>
   </div>
