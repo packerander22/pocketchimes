@@ -1426,6 +1426,7 @@
     const BIG_HIT_DELTA  = 7.0;   // large single-frame spike can ring even w/o sign flip
 
     let inSwing = false;
+    let swingHandled = false;     // NEW: track if this swing already caused a ring
     let lastMagnitude = null;
     let lastDelta = 0;
     let lastAx = null, lastAy = null, lastAz = null;
@@ -1480,7 +1481,11 @@
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
 
-      if (absDelta < RESET_DELTA) inSwing = false;
+      // When motion is calm, reset swing state so we can ring again on the next swing.
+      if (absDelta < RESET_DELTA) {
+        inSwing = false;
+        swingHandled = false;
+      }
 
       const prevSign = Math.sign(lastDelta);
       const currSign = Math.sign(signedDelta);
@@ -1488,15 +1493,16 @@
       const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
       const justReversed = wasBuilding && changedDirection;
 
-      // New: treat a big single-frame spike as a valid "big hit"
+      // Treat a big single-frame spike as a valid "big hit"
       const bigHit = absDelta >= BIG_HIT_DELTA;
 
-      if (!inSwing && nowMs - lastRingTime > MIN_INTERVAL && (justReversed || bigHit)) {
+      if (!inSwing && !swingHandled && nowMs - lastRingTime > MIN_INTERVAL && (justReversed || bigHit)) {
         // If we got a reversal, use the previous peak; otherwise use this frame’s big spike
         const peak = justReversed ? Math.abs(lastDelta) : absDelta;
 
         if (peak >= DELTA_RING_MIN) {
           inSwing = true;
+          swingHandled = true;  // mark this swing as already handled
           lastRingTime = nowMs;
 
           const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
@@ -1558,8 +1564,6 @@
               }
             }
           }
-
-          inSwing = false;
         }
       }
 
@@ -1574,6 +1578,7 @@
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
+      swingHandled = false;
       lastGyroDir = null;
       faceUpSamples = [];
 
@@ -1586,6 +1591,7 @@
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
+      swingHandled = false;
       lastGyroDir = null;
       faceUpSamples = [];
 
@@ -1728,7 +1734,7 @@
       }
     }
 
-    // Tap-to-ring: now uses addPressHandler so both bells can be pressed at once
+    // Tap-to-ring: uses addPressHandler so both bells can be pressed at once
     addPressHandler(playNoteLeft, () => {
       if (currentNote) playBellToRingEl(currentNote, bellRingLeft, 1, null);
     });
