@@ -880,7 +880,7 @@
       return { floor, tc };
     }
 
-    // ---- FACE-DOWN MUTE + CALIBRATION ----
+    // ---- FACE-DOWN MUTE + CALIBRATION (UP/DOWN) ----
     const activeRings = new Set();
     let faceDownTriggeredThisRingWindow = false;
 
@@ -901,12 +901,6 @@
     const CALIB_MIN_SAMPLES = 16;
     const CALIB_NEAR_FLAT_COS = Math.cos((55 * Math.PI) / 180);
     const CALIB_GRAV_DELTA_MAX = 0.30;
-
-    let faceUpLatchedUntilMs = 0;
-    const FACEUP_LATCH_HOLD_MS = 320;
-    const FACEUP_ENTER_COS = -0.82;
-    const FACEUP_EXIT_COS  = -0.60;
-    let faceUpState = false;
 
     function getAccelMag(a) {
       if (!a) return Infinity;
@@ -994,34 +988,14 @@
       if (!g || g.x == null || g.y == null || g.z == null) return null;
 
       const gx = g.x || 0, gy = g.y || 0, gz = g.z || 0;
+
       const gzNorm = gz * faceDownZSign;
       const gmag = Math.sqrt(gx*gx + gy*gy + gzNorm*gzNorm);
       if (!isFinite(gmag) || gmag < GRAVITY_MIN_MAG) return null;
+
       if (Math.abs(gzNorm) < 0.55 * gmag) return null;
 
       return (gzNorm / gmag); // +1 = down, -1 = up
-    }
-
-    function updateFaceUpLatch(event, nowMs) {
-      const cosToDown = computeCosToDownFromEvent(event);
-      if (cosToDown == null) return;
-
-      if (!faceUpState) {
-        if (cosToDown <= FACEUP_ENTER_COS) {
-          faceUpState = true;
-          faceUpLatchedUntilMs = nowMs + FACEUP_LATCH_HOLD_MS;
-        }
-      } else {
-        if (cosToDown <= FACEUP_EXIT_COS) {
-          faceUpLatchedUntilMs = nowMs + FACEUP_LATCH_HOLD_MS;
-        } else if (nowMs > faceUpLatchedUntilMs) {
-          faceUpState = false;
-        }
-      }
-    }
-
-    function isFaceUpLatched(nowMs) {
-      return faceUpState && nowMs <= faceUpLatchedUntilMs;
     }
 
     function checkFaceDownOnly(event) {
@@ -1104,15 +1078,14 @@
       }
     }
 
-    // ---- Dual-bell state + calibration (forward vs opposite) ----
+    // ---- Dual-bell state + calibration (FORWARD vs BACKWARD) ----
     let currentNote = null;
     let secondNote = null;
 
     let dualCalibrating = false;
     let dualCalibCount = 0;
 
-    // normalized direction for "Away From You"
-    let dualForwardVec = null;
+    let dualForwardVec = null; // normalized direction for "Away From You"
 
     // Skip gating: user must click Info first
     let skipUnlocked = false;
@@ -1145,7 +1118,12 @@
     }
 
     function finishDualCalibration() {
-      if (!dualForwardVec) dualForwardVec = { x: 1, y: 0, z: 0 };
+      if (!dualForwardVec) {
+        dualForwardVec = { x: 1, y: 0, z: 0 };
+      } else {
+        const n = normVec(dualForwardVec);
+        dualForwardVec = n.m > 0 ? { x: n.x, y: n.y, z: n.z } : { x: 1, y: 0, z: 0 };
+      }
       dualCalibrating = false;
       calibToast.classList.remove("active");
     }
@@ -1244,8 +1222,10 @@
       if (!note) return;
 
       bigHapticBump();
+
       ensureAudioCtx();
       if (!audioCtx) return;
+
       if (audioCtx.state === "suspended") await audioCtx.resume();
 
       const buffer = await loadNoteBuffer(note);
@@ -1260,8 +1240,8 @@
       gain.connect(audioCtx.destination);
 
       const safeDuration = Math.max(buffer.duration, 0.05);
-      const peak = volumeMaxGain;
 
+      const peak = volumeMaxGain;
       gain.gain.setValueAtTime(peak, now);
 
       const ringRef = { src, gain, ended: false, safeDuration };
@@ -1307,163 +1287,108 @@
       }
     }
 
-    // ========= MOTION HANDLING: OLD SNAP LOGIC + 200ms WINDOWS =========
-
-    // Snap-back trigger thresholds (same behavior as before)
-    let lastRingTime = 0;
-    const MIN_INTERVAL   = 200;   // ms between rings
-    const DELTA_RING_MIN = 3.0;   // min magnitude change for a swing
-    const DELTA_RING_MAX = 10.0;  // clamp for intensity
-    const RESET_DELTA    = 1.5;   // below this, not swinging
-
-    let inSwing = false;
-    let lastMagnitude = null;
-    let lastDelta = 0;
-    let lastAx = null, lastAy = null, lastAz = null;
-
-    // 200ms windows for direction + face-up
-    const DIR_WINDOW_MS = 200;
-    const FACEUP_WINDOW_MS = 200;
-
-    let dirSamples = [];    // { t, v: {x,y,z} } normalized direction samples
-    let faceUpSamples = []; // { t, up: boolean }
-
-    function dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
-    function norm(v) {
+    // ---------- VECTOR HELPERS ----------
+    function normVec(v) {
       const m = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
-      if (!isFinite(m) || m < 1e-6) return { x: 0, y: 0, z: 0, m: 0 };
+      if (!isFinite(m) || m === 0) return { x: 0, y: 0, z: 0, m: 0 };
       return { x: v.x / m, y: v.y / m, z: v.z / m, m };
     }
 
-    function computeVisualDirFromJerk(jx, jy, jz) {
-      const absX = Math.abs(jx), absY = Math.abs(jy), absZ = Math.abs(jz);
-      const maxComp = Math.max(absX, absY, absZ);
-      const MIN_JERK = 0.3;
-
-      if (maxComp < MIN_JERK) return Math.random() < 0.5 ? "left" : "right";
-      if (maxComp === absX) return jx > 0 ? "left" : "right";
-      if (maxComp === absY) return jy > 0 ? "up" : "down";
-      return jz > 0 ? "up" : "down";
+    function dotVec(a, b) {
+      return a.x*b.x + a.y*b.y + a.z*b.z;
     }
 
-    function pruneWindowSamples(nowMs) {
-      const dirCutoff = nowMs - DIR_WINDOW_MS;
-      const faceCutoff = nowMs - FACEUP_WINDOW_MS;
-      dirSamples = dirSamples.filter(s => s.t >= dirCutoff);
-      faceUpSamples = faceUpSamples.filter(s => s.t >= faceCutoff);
+    // ---------- SWING / FACE-UP SLIDING WINDOWS ----------
+    const SWING_WINDOW_MS  = 200; // direction buildup
+    const FACEUP_WINDOW_MS = 200; // face-up majority window
+
+    let swingWindow = [];   // { t, dir: {x,y,z} } last <= 200ms
+    let faceUpWindow = [];  // { t, isUp }        last <= 200ms
+
+    const FACEUP_UP_COS = -0.25; // cosToDown <= this => considered face-up-ish
+
+    function pruneWindow(arr, nowMs, spanMs) {
+      const cutoff = nowMs - spanMs;
+      while (arr.length && arr[0].t < cutoff) arr.shift();
     }
 
-    function pushDirectionSample(nowMs, event, jx, jy, jz) {
-      let v = null;
-
-      if (event.acceleration && (
-        event.acceleration.x != null ||
-        event.acceleration.y != null ||
-        event.acceleration.z != null
-      )) {
-        v = {
-          x: event.acceleration.x || 0,
-          y: event.acceleration.y || 0,
-          z: event.acceleration.z || 0
-        };
-      } else {
-        v = { x: jx, y: jy, z: jz };
-      }
-
-      const n = norm(v);
-      if (n.m > 0.4) {
-        dirSamples.push({ t: nowMs, v: { x: n.x, y: n.y, z: n.z } });
-      }
+    function pushSwingDirSample(ax, ay, az, nowMs) {
+      const mag = Math.sqrt(ax*ax + ay*ay + az*az);
+      if (!isFinite(mag) || mag < 0.15) return; // ignore near-zero jitter
+      const inv = 1 / mag;
+      swingWindow.push({
+        t: nowMs,
+        dir: { x: ax*inv, y: ay*inv, z: az*inv }
+      });
     }
 
-    function pushFaceUpSample(nowMs, event) {
+    function updateFaceUpWindowFromEvent(event, nowMs) {
       const cosToDown = computeCosToDownFromEvent(event);
-      if (cosToDown == null) return;
-      const isUp = (cosToDown <= FACEUP_ENTER_COS);
-      faceUpSamples.push({ t: nowMs, up: isUp });
+      let isUp = false;
+      if (cosToDown != null) {
+        // +1 = down, -1 = up; so "face up" = sufficiently negative
+        isUp = (cosToDown <= FACEUP_UP_COS);
+      }
+      faceUpWindow.push({ t: nowMs, isUp });
     }
 
-    function isFaceUpMajority(nowMs) {
-      const cutoff = nowMs - FACEUP_WINDOW_MS;
-      const window = faceUpSamples.filter(s => s.t >= cutoff);
-      if (!window.length) return false;
+    function isFaceUpMajority() {
+      if (!faceUpWindow.length) return false;
       let upCount = 0;
-      for (const s of window) if (s.up) upCount++;
-      return upCount >= window.length / 2;
+      for (const s of faceUpWindow) {
+        if (s.isUp) upCount++;
+      }
+      return upCount * 2 >= faceUpWindow.length;
     }
 
-    function buildDirectionVerdictFromWindow(nowMs) {
-      const f = dualForwardVec ? norm(dualForwardVec) : { x: 1, y: 0, z: 0, m: 1 };
-      const cutoff = nowMs - DIR_WINDOW_MS;
-      let window = dirSamples.filter(s => s.t >= cutoff);
-      if (!window.length) return null;
-
-      // enrich with dot against forward
-      let items = window.map(s => ({
-        t: s.t,
-        v: s.v,
-        d: dot(s.v, f)
-      }));
-
-      // trim inconsistent outliers at the start
-      while (items.length >= 3) {
-        const first = items[0], second = items[1];
-        if (Math.sign(first.d) !== 0 &&
-            Math.sign(second.d) !== 0 &&
-            Math.sign(first.d) !== Math.sign(second.d) &&
-            Math.abs(first.d) < 0.25) {
-          items.shift();
-        } else break;
-      }
-
-      // trim inconsistent outliers at the end
-      while (items.length >= 3) {
-        const last = items[items.length - 1];
-        const prev = items[items.length - 2];
-        if (Math.sign(last.d) !== 0 &&
-            Math.sign(prev.d) !== 0 &&
-            Math.sign(last.d) !== Math.sign(prev.d) &&
-            Math.abs(last.d) < 0.25) {
-          items.pop();
-        } else break;
-      }
-
-      if (!items.length) return null;
+    // Always pick a hemisphere; never return null.
+    function buildDirectionVerdictFromWindow(forwardVec) {
+      if (!forwardVec) return "primary";
+      if (!swingWindow.length) return "primary";
 
       let sx = 0, sy = 0, sz = 0;
-      for (const it of items) {
-        sx += it.v.x;
-        sy += it.v.y;
-        sz += it.v.z;
+      for (const s of swingWindow) {
+        sx += s.dir.x;
+        sy += s.dir.y;
+        sz += s.dir.z;
       }
-      const n = norm({ x: sx, y: sy, z: sz });
-      if (n.m <= 0) return null;
+      const mag = Math.sqrt(sx*sx + sy*sy + sz*sz);
+      if (!isFinite(mag) || mag === 0) return "primary";
 
-      const d = dot(n, f);
-      if (Math.abs(d) < 0.2) return null;
+      const nx = sx / mag;
+      const ny = sy / mag;
+      const nz = sz / mag;
 
+      const d = nx*forwardVec.x + ny*forwardVec.y + nz*forwardVec.z;
+      // No deadzone: sign decides hemisphere.
       return d >= 0 ? "primary" : "secondary";
     }
 
-    // Direction used to build dualForwardVec during calibration: average of window only
-    function buildDirectionForCalibration(nowMs) {
-      const cutoff = nowMs - DIR_WINDOW_MS;
-      const window = dirSamples.filter(s => s.t >= cutoff);
-      if (!window.length) return null;
+    // ---- MOTION HANDLING (ACCEL + JERK + 200ms WINDOWS) ----
+    let lastRingTimeMs = 0;
 
-      let sx = 0, sy = 0, sz = 0;
-      for (const s of window) {
-        sx += s.v.x;
-        sy += s.v.y;
-        sz += s.v.z;
-      }
-      const n = norm({ x: sx, y: sy, z: sz });
-      return (n.m > 0) ? n : null;
-    }
+    // Jerk-based snap detection, similar to your "good" version
+    const MIN_INTERVAL_MS   = 140;  // small guard against pure double-fire noise
+    const DELTA_RING_MIN    = 2.8;  // need this much "build" before reversal
+    const DELTA_RING_MAX    = 10.0; // clamp for intensity mapping
+    const RESET_DELTA       = 1.0;  // below this, consider "calm"
 
-    // Direction for snap: ONLY from the buildup window (no jerk direction)
-    function classifyDirectionForSnap(nowMs) {
-      return buildDirectionVerdictFromWindow(nowMs);
+    let inSwing      = false;
+    let lastMag      = null;
+    let lastDelta    = 0;
+    let lastAx       = null;
+    let lastAy       = null;
+    let lastAz       = null;
+
+    function computeVisualDirFromAccel(ax, ay, az) {
+      const absX = Math.abs(ax), absY = Math.abs(ay), absZ = Math.abs(az);
+      const maxComp = Math.max(absX, absY, absZ);
+      const MIN_VAL = 0.5;
+
+      if (maxComp < MIN_VAL) return Math.random() < 0.5 ? "left" : "right";
+      if (maxComp === absX) return ax > 0 ? "right" : "left";
+      if (maxComp === absY) return ay > 0 ? "up" : "down";
+      return az > 0 ? "up" : "down";
     }
 
     function handleMotion(event) {
@@ -1471,140 +1396,144 @@
 
       const nowMs = performance.now();
 
-      updateFaceUpLatch(event, nowMs);
+      // Maintain sliding windows
+      pruneWindow(swingWindow, nowMs, SWING_WINDOW_MS);
+      pruneWindow(faceUpWindow, nowMs, FACEUP_WINDOW_MS);
+
+      // Face-down mute (uses gravity / calibration)
       checkFaceDownOnly(event);
 
-      // prune windows & push new samples
-      pruneWindowSamples(nowMs);
-      pushFaceUpSample(nowMs, event);
-
+      // Base acceleration for jerk + direction
       let acc = event.acceleration;
-      if (!acc || (acc.x == null && acc.y == null && acc.z == null)) {
+      if (!acc || (acc.x === null && acc.y === null && acc.z === null)) {
         acc = event.accelerationIncludingGravity;
       }
       if (!acc) return;
 
-      const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
+      const ax = acc.x || 0;
+      const ay = acc.y || 0;
+      const az = acc.z || 0;
+
       const magnitude = Math.sqrt(ax*ax + ay*ay + az*az);
 
-      if (lastMagnitude === null || lastAx === null) {
-        lastMagnitude = magnitude;
+      // Push samples for direction & face-up windows
+      pushSwingDirSample(ax, ay, az, nowMs);
+      updateFaceUpWindowFromEvent(event, nowMs);
+
+      if (lastMag === null || lastAx === null) {
+        lastMag = magnitude;
         lastAx = ax; lastAy = ay; lastAz = az;
         return;
       }
 
-      const jx = ax - lastAx, jy = ay - lastAy, jz = az - lastAz;
-      const signedDelta = magnitude - lastMagnitude;
-      const absDelta = Math.abs(signedDelta);
+      // Jerk-ish delta on magnitude (same flavor as older version)
+      const signedDelta = magnitude - lastMag;
+      const absDelta    = Math.abs(signedDelta);
 
-      // Use accel or jerk to populate direction window
-      pushDirectionSample(nowMs, event, jx, jy, jz);
+      if (absDelta < RESET_DELTA) {
+        inSwing = false;
+      }
 
-      if (absDelta < RESET_DELTA) inSwing = false;
+      const prevSign      = Math.sign(lastDelta);
+      const currSign      = Math.sign(signedDelta);
+      const wasBuilding   = Math.abs(lastDelta) > DELTA_RING_MIN;
+      const changedDir    = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
+      const justReversed  = wasBuilding && changedDir;
 
-      const prevSign = Math.sign(lastDelta);
-      const currSign = Math.sign(signedDelta);
-      const wasBuilding = Math.abs(lastDelta) > DELTA_RING_MIN;
-      const changedDirection = prevSign !== 0 && currSign !== 0 && currSign === -prevSign;
-      const justReversed = wasBuilding && changedDirection;
-
-      if (!inSwing && justReversed && nowMs - lastRingTime > MIN_INTERVAL) {
+      if (!inSwing && justReversed && (nowMs - lastRingTimeMs) > MIN_INTERVAL_MS) {
         const peak = Math.abs(lastDelta);
+
         if (peak >= DELTA_RING_MIN) {
           inSwing = true;
-          lastRingTime = nowMs;
+          lastRingTimeMs = nowMs;
 
-          const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
-          const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
-          const visualDir = computeVisualDirFromJerk(jx, jy, jz);
+          // Instant swing direction at the snap (for calibration fallback)
+          const nInstant = normVec({ x: ax, y: ay, z: az });
+          const swingDirInstant = nInstant.m > 0 ? { x: nInstant.x, y: nInstant.y, z: nInstant.z } : { x: 1, y: 0, z: 0 };
 
-          ensureWakeLock();
-
-          const faceUpMaj = isFaceUpMajority(nowMs);
-
-          if (!secondNote) {
-            // single-bell: always ring
-            playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
-          } else {
-            // two-bell behavior
-            if (faceUpMaj && !dualCalibrating) {
-              // phone face-up in last 200ms → both bells
-              playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
-              playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
-            } else if (dualCalibrating) {
-              // calibration: no sound, just build dualForwardVec from 200ms window
-              const calibDir = buildDirectionForCalibration(nowMs);
-              if (calibDir) {
-                if (!dualForwardVec) {
-                  dualForwardVec = { x: calibDir.x, y: calibDir.y, z: calibDir.z };
-                  dualCalibCount = 1;
-                } else {
-                  const nF = norm(dualForwardVec);
-                  const d = dot(calibDir, nF);
-                  if (d >= 0) {
-                    dualCalibCount++;
-                    dualForwardVec = {
-                      x: dualForwardVec.x + calibDir.x,
-                      y: dualForwardVec.y + calibDir.y,
-                      z: dualForwardVec.z + calibDir.z
-                    };
-                  } else {
-                    // if user accidentally swung opposite, reset to new direction
-                    dualForwardVec = { x: calibDir.x, y: calibDir.y, z: calibDir.z };
-                    dualCalibCount = 1;
-                  }
-                }
-
-                calibProgress.textContent = String(dualCalibCount);
-
-                if (dualCalibCount >= 3) {
-                  const nF = norm(dualForwardVec);
-                  dualForwardVec = nF.m > 0 ? { x: nF.x, y: nF.y, z: nF.z } : { x: 1, y: 0, z: 0 };
-                  finishDualCalibration();
-                }
-              }
+          // Dual-bell calibration: use these first few snaps to define "forward"
+          if (secondNote && dualCalibrating) {
+            if (!dualForwardVec) {
+              dualForwardVec = { ...swingDirInstant };
             } else {
-              // normal 2-bell mapping: direction from 200ms buildup window only
-              const verdict = classifyDirectionForSnap(nowMs);
+              dualForwardVec.x += swingDirInstant.x;
+              dualForwardVec.y += swingDirInstant.y;
+              dualForwardVec.z += swingDirInstant.z;
+            }
+            dualCalibCount++;
+            calibProgress.textContent = String(dualCalibCount);
 
-              if (verdict === "primary") {
-                playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
-              } else if (verdict === "secondary") {
-                playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
+            if (dualCalibCount >= 3) {
+              finishDualCalibration();
+            }
+
+            // Do NOT actually play bells while calibrating.
+          } else {
+            ensureWakeLock();
+
+            const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
+            const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
+            const visualDir = computeVisualDirFromAccel(ax, ay, az);
+
+            const faceUpBoth = isFaceUpMajority();
+
+            if (!secondNote) {
+              // Single bell: just ring current
+              playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+            } else {
+              if (faceUpBoth) {
+                // Face-up majority in last 200ms: ALWAYS ring both
+                playBellToRingEl(currentNote,  bellRingLeft,  intensity, visualDir);
+                playBellToRingEl(secondNote,   bellRingRight, intensity, visualDir);
               } else {
-                // ambiguous buildup window ➜ default to primary
-                playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
+                const forward = dualForwardVec || swingDirInstant;
+                const verdict = buildDirectionVerdictFromWindow(forward);
+
+                if (verdict === "primary") {
+                  playBellToRingEl(currentNote,  bellRingLeft,  intensity, visualDir);
+                } else {
+                  playBellToRingEl(secondNote,   bellRingRight, intensity, visualDir);
+                }
               }
             }
           }
 
-          inSwing = false;
+          // After a ring (or calibration snap), reset swing state; we still
+          // keep the windows alive for the next buildup.
+          inSwing   = false;
+          lastDelta = 0;
+          lastMag   = magnitude;
+          lastAx    = ax; lastAy = ay; lastAz = az;
+          return;
         }
       }
 
-      lastMagnitude = magnitude;
+      lastMag   = magnitude;
       lastDelta = signedDelta;
-      lastAx = ax; lastAy = ay; lastAz = az;
+      lastAx    = ax; lastAy = ay; lastAz = az;
     }
 
     function startMotionListening() {
-      lastMagnitude = null;
+      lastMag   = null;
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
-      dirSamples = [];
-      faceUpSamples = [];
+
+      swingWindow = [];
+      faceUpWindow = [];
+
       window.addEventListener("devicemotion", handleMotion, { passive: true });
     }
 
     function stopMotionListening() {
       window.removeEventListener("devicemotion", handleMotion);
-      lastMagnitude = null;
+      lastMag   = null;
       lastDelta = 0;
       lastAx = lastAy = lastAz = null;
       inSwing = false;
-      dirSamples = [];
-      faceUpSamples = [];
+
+      swingWindow = [];
+      faceUpWindow = [];
 
       faceDownTriggeredThisRingWindow = false;
       activeRings.clear();
