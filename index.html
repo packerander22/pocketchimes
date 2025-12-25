@@ -1112,7 +1112,7 @@
     let secondNote = null;
 
     let dualCalibrating = false;
-    let dualCalibCount = 0;
+       let dualCalibCount = 0;
     let dualForwardVec = null; // normalized "away from you" direction (device-space gyro)
 
     let skipUnlocked = false;
@@ -1323,18 +1323,19 @@
       return { x: v.x/m, y: v.y/m, z: v.z/m, m };
     }
 
-    // ---- MOTION HANDLING (jerk-based ring, old-style firing + cooldown, direction from pre-jerk gyro) ----
+    // ---- MOTION HANDLING (jerk-based ring, simple threshold + cooldown, direction from pre-jerk gyro) ----
     let lastRingTime = 0;
 
     const MIN_INTERVAL   = 140;   // ms between rings (cooldown)
     const DELTA_RING_MIN = 3.0;   // minimum "jerk" needed to ring
     const DELTA_RING_MAX = 10.0;  // clamp for intensity
+    const RESET_DELTA    = 1.5;   // tiny changes treated as calm / noise
 
     let lastMagnitude = null;
     let lastDelta = 0;
     let lastAx = null, lastAy = null, lastAz = null;
 
-    // direction: we use the gyro direction from the frame *before* the jerk
+    // gyro direction from the frame BEFORE the jerk
     let lastGyroDir = null; // normalized {x,y,z}
 
     function handleMotion(event) {
@@ -1346,7 +1347,7 @@
       checkFaceDownOnly(event);
       updateFaceUpWindow(event, nowMs);
 
-      // --- gyro for direction (used on the *next* frame if we cross jerk threshold) ---
+      // --- gyro for direction ---
       const rr = event.rotationRate;
       let currGyroDir = null;
       if (rr) {
@@ -1384,20 +1385,19 @@
       const signedDelta = magnitude - lastMagnitude;
       const absDelta = Math.abs(signedDelta);
 
-      const timeSinceLastRing = nowMs - lastRingTime;
-
-      // ---- Old-style firing logic: jerk threshold + cooldown ----
-      if (absDelta >= DELTA_RING_MIN && timeSinceLastRing > MIN_INTERVAL) {
+      // Old-style firing logic: simple jerk threshold + cooldown
+      if (
+        absDelta >= DELTA_RING_MIN &&
+        (nowMs - lastRingTime) > MIN_INTERVAL
+      ) {
         lastRingTime = nowMs;
 
-        const peak = absDelta;
-        const clamped = Math.min(Math.max(peak, DELTA_RING_MIN), DELTA_RING_MAX);
+        const clamped = Math.min(Math.max(absDelta, DELTA_RING_MIN), DELTA_RING_MAX);
         const intensity = (clamped - DELTA_RING_MIN) / (DELTA_RING_MAX - DELTA_RING_MIN);
 
         ensureWakeLock();
 
-        // Use gyro direction from the frame *before* the jerk (lastGyroDir),
-        // falling back to current gyro, then calibration forward, then +X.
+        // Use gyro direction from the frame *before* the jerk if possible
         let dirVec = lastGyroDir || currGyroDir || dualForwardVec || { x: 1, y: 0, z: 0 };
         let dirN = norm(dirVec);
         if (dirN.m === 0) dirN = { x: 1, y: 0, z: 0, m: 1 };
@@ -1412,12 +1412,12 @@
         const faceUpMajor = majorityFaceUp();
 
         if (!secondNote) {
-          // Single bell, still respect forward/back for the visual
+          // Single bell: just use direction for visual
           playBellToRingEl(currentNote, bellRingLeft, intensity, visualDir);
         } else {
           // Dual bells
           if (faceUpMajor) {
-            // Face up → always ring both (and same visual tilt)
+            // Face up → always ring both, same visual tilt
             playBellToRingEl(currentNote,  bellRingLeft,  intensity, visualDir);
             playBellToRingEl(secondNote, bellRingRight, intensity, visualDir);
           } else if (dualCalibrating) {
@@ -1443,8 +1443,7 @@
             }
             // No sound during calibration
           } else {
-            // Normal dual play: sign of dot(dir, forward) decides which bell,
-            // and that same sign already drove visualDir above.
+            // Normal dual play: sign of dot(dir, forward) decides which bell
             if (sdot >= 0) {
               playBellToRingEl(currentNote,  bellRingLeft,  intensity, visualDir);
             } else {
@@ -1454,7 +1453,6 @@
         }
       }
 
-      // Update history for next frame
       lastMagnitude = magnitude;
       lastDelta = signedDelta;
       lastAx = ax; lastAy = ay; lastAz = az;
