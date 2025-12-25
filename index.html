@@ -73,7 +73,7 @@
     /* --- Logo with tighter, symmetric spacing --- */
     .global-logo {
       position: fixed;
-      top: 0.3rem;            /* smaller top gap */
+      top: 0.4rem;            /* reduced top gap */
       left: 50%;
       transform: translateX(-50%);
       width: 96px;
@@ -86,8 +86,8 @@
       width: 100%;
       max-width: 480px;
       margin: auto;
-      /* top padding = topGap + logoHeight + sameGap below */
-      padding: calc(0.3rem + 96px + 0.3rem) 1.2rem 2.5rem;
+      /* top padding = topGap + logoHeight + topGap (symmetric) */
+      padding: calc(0.4rem + 96px + 0.4rem) 1.2rem 2.5rem;
     }
 
     .card,
@@ -195,28 +195,32 @@
       justify-content: flex-start;
       text-align: center;
       color: #020617;
-      padding: 1.2rem;
-      padding-bottom: calc(1.2rem + 110px);
+      padding: 0 1.2rem calc(1.2rem + 110px);
       background: #111827;
     }
 
     .play-screen.active { display: flex; }
 
-    /* Wrapper so bells stay vertically centered, description underneath */
+    /* Main column inside play screen */
     .play-main {
       flex: 1;
       display: flex;
       flex-direction: column;
       width: 100%;
       max-width: 520px;
+      margin-top: calc(0.4rem + 96px + 0.4rem); /* line up visually with logo area */
+      position: relative;
     }
 
+    /* This wrapper is what we vertically center with JS (transform) */
     .bell-center-wrap {
       flex: 1;
       display: flex;
       align-items: center;
       justify-content: center;
       width: 100%;
+      transform: translateY(0); /* default, JS will adjust */
+      will-change: transform;
     }
 
     .top-btn {
@@ -274,34 +278,33 @@
       align-items: stretch;
       justify-content: center;
       gap: 0;
-      margin-top: 0;        /* remove extra vertical offset */
-      margin-bottom: 0;     /* so the whole block can center */
+      margin-top: 0.2rem;
+      margin-bottom: 0.4rem; /* slightly tighter above instructions */
       box-shadow: none;
       border-radius: 0;
       overflow: visible;
       background: transparent;
     }
 
-    /* New: flex layout so note + bell are centered, not pushed up */
     .dual-pane {
       flex: 1;
-      padding: 0.6rem 0.8rem 0.4rem;
-      display: flex;
-      flex-direction: column;
+      padding: 0.8rem 0.8rem 0.6rem;
+      display: grid;
+      grid-template-rows: var(--label-slot, 4.9rem) 170px auto;
       align-items: center;
-      justify-content: center;
-      min-height: 0;
+      justify-items: center;
+      min-height: 320px;
     }
 
     .dual-pane.hidden { display: none; }
 
     .note-slot {
       width: 100%;
-      min-height: auto;      /* no forced tall label area */
+      min-height: var(--label-slot, 4.9rem);
       display: flex;
-      align-items: center;   /* center the letter vertically in its own row */
+      align-items: flex-end;
       justify-content: center;
-      padding-bottom: 0.35rem;  /* slightly tighter spacing above bell */
+      padding-bottom: 0.55rem;
     }
 
     .play-note-label {
@@ -354,7 +357,7 @@
       opacity: 0.9;
       max-width: 18rem;
       line-height: 1.5;
-      margin: 0.8rem auto 0.8rem;
+      margin: 0.25rem auto 0.6rem; /* closer to bells, still some breathing room */
       color: #000000;           /* simple black text */
       text-shadow: none;        /* no glow */
     }
@@ -547,10 +550,13 @@
       .app {
         padding: calc(0.25rem + 78px + 0.25rem) 1.2rem 2.5rem;
       }
+      .play-main {
+        margin-top: calc(0.25rem + 78px + 0.25rem);
+      }
       .play-note-label { font-size: 2.6rem; }
       .hint-text { margin-bottom: 0.4rem; }
       .play-screen { padding-bottom: calc(1.2rem + 96px); }
-      .dual-pane { padding: 0.4rem 0.6rem 0.3rem; }
+      .dual-pane { min-height: 240px; grid-template-rows: 4.2rem 160px auto; }
     }
 
     @media (max-width: 400px) {
@@ -558,6 +564,7 @@
       .note-btn { padding: 0.55rem 0.25rem; }
       .sustain-control { width: min(340px, 92vw); }
       .play-screen { padding-bottom: calc(1.2rem + 106px); }
+      .dual-pane { min-height: 300px; }
     }
   </style>
 </head>
@@ -635,7 +642,7 @@
     </div>
 
     <div class="play-main">
-      <div class="bell-center-wrap">
+      <div class="bell-center-wrap" id="bell-center-wrap">
         <div class="dual-area" id="dual-area" aria-label="Bell area">
           <div class="dual-pane" id="pane-left">
             <div class="note-slot">
@@ -666,7 +673,8 @@
       </div>
 
       <div class="hint-text">
-        Swing your phone like a handbell. Tap the note or bell to ring.
+        Swing your phone like a handbell.
+        Tap the note or bell to ring.
       </div>
     </div>
   </div>
@@ -777,6 +785,7 @@
     const sustainValueLabel = document.getElementById("sustain-value-label");
 
     const hintTextEl = document.querySelector(".hint-text");
+    const bellCenterWrap = document.getElementById("bell-center-wrap");
 
     const singleHintText =
       "Swing your phone like a handbell. Tap the note or bell to ring.";
@@ -790,6 +799,24 @@
       } else {
         hintTextEl.textContent = singleHintText;
       }
+    }
+
+    // Center the bells so the middle of the bell visual is at screen center
+    function centerBellsVertically() {
+      if (!playScreen.classList.contains("active")) return;
+      if (!bellVisualLeft || !bellCenterWrap) return;
+
+      // Reset any previous transform first to measure correctly
+      bellCenterWrap.style.transform = "translateY(0px)";
+
+      const rect = bellVisualLeft.getBoundingClientRect();
+      if (!rect || rect.height === 0) return;
+
+      const bellCenter = rect.top + rect.height / 2;
+      const viewportCenter = window.innerHeight / 2;
+
+      const delta = viewportCenter - bellCenter;
+      bellCenterWrap.style.transform = `translateY(${delta}px)`;
     }
 
     // ---- AUDIO ----
@@ -1212,6 +1239,7 @@
       paneRight.classList.add("hidden");
       playScreen.style.background = currentNote ? currentNote.color : "#111827";
       updateHintText();
+      setTimeout(centerBellsVertically, 0);
     }
 
     function setDualUI() {
@@ -1221,6 +1249,7 @@
           `linear-gradient(90deg, ${currentNote.color} 0%, ${currentNote.color} 50%, ${secondNote.color} 50%, ${secondNote.color} 100%)`;
       }
       updateHintText();
+      setTimeout(centerBellsVertically, 0);
     }
 
     // ---- Add-bell note screen text ----
@@ -1266,6 +1295,7 @@
       else if (currentNote) setSingleUI();
 
       refreshTopRightButtons();
+      setTimeout(centerBellsVertically, 50);
     }
 
     function refreshTopRightButtons() {
@@ -1600,6 +1630,7 @@
       startMotionListening();
 
       playBellToRingEl(note, bellRingLeft, 1, null);
+      setTimeout(centerBellsVertically, 50);
     }
 
     function pickSecondNote(note) {
@@ -1611,6 +1642,7 @@
 
       startDualCalibration();
       refreshTopRightButtons();
+      setTimeout(centerBellsVertically, 50);
     }
 
     backBtn.addEventListener("click", () => {
@@ -1618,6 +1650,7 @@
       resetDualMode();
       stopMotionListening();
       playScreen.classList.remove("active");
+      bellCenterWrap.style.transform = "translateY(0px)";
       showNoteScreen("primary");
     });
 
@@ -1660,6 +1693,7 @@
 
     // ---- Multi-touch friendly press handler (for both bells) ----
     function addPressHandler(el, fn) {
+      if (!el) return;
       if (window.PointerEvent) {
         el.addEventListener("pointerdown", (e) => {
           if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -1702,6 +1736,7 @@
 
     // Keyboard accessibility
     function bindKeyActivate(el, fn) {
+      if (!el) return;
       el.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -1779,8 +1814,12 @@
     });
 
     window.addEventListener("touchstart", () => { resumeAudioCtx(); }, { passive: true });
+    window.addEventListener("resize", () => { setTimeout(centerBellsVertically, 50); });
+    window.addEventListener("orientationchange", () => { setTimeout(centerBellsVertically, 150); });
 
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) resetAudioContextOnReturn(); });
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) resetAudioContextOnReturn();
+    });
     window.addEventListener("pageshow", () => { resetAudioContextOnReturn(); });
     window.addEventListener("focus", () => { resetAudioContextOnReturn(); });
   </script>
