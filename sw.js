@@ -1,9 +1,9 @@
 // PWA service worker for PocketChimes
-// Aggressive cache ONLY for audio + favicons
+// Aggressive cache ONLY for audio + favicons, with full bell precache
 
-// Bump these names any time you want to force-clear old SW caches
-const STATIC_CACHE = "pocketchimes-static-v2";
-const MEDIA_CACHE  = "pocketchimes-media-v2";
+// Bump these if you ever want to force-clear all SW caches again
+const STATIC_CACHE = "pocketchimes-static-v3";
+const MEDIA_CACHE  = "pocketchimes-media-v3";
 
 // Long-lived static assets (favicons, manifest, etc.)
 const STATIC_ASSETS = [
@@ -19,16 +19,30 @@ const STATIC_ASSETS = [
   "/favicons/favicon_2048_transparent.png",
   "/favicons/favicon_maskable_512_transparent.png",
   "/favicons/site.webmanifest"
-  // If you ever have a separate logo file you want cached hard,
-  // just add its path here, e.g. "/logo.png"
+  // If you add a standalone logo you want hard-cached, add it here,
+  // e.g. "/logo.png"
 ];
 
-// Optional: audio files you want *pre*-cached on install.
-// You can leave this empty; runtime caching below will still
-// cache anything under /audio/ the first time it's requested.
+// All bell audio files, URL-encoded where "#" => "%23"
 const MEDIA_ASSETS = [
-  // "/audio/C5.wav",
-  // "/audio/C6.wav",
+  "/audio/A%235.wav", "/audio/A%236.wav", "/audio/A%237.wav",
+  "/audio/A5.wav",    "/audio/A6.wav",    "/audio/A7.wav",
+
+  "/audio/B5.wav",    "/audio/B6.wav",    "/audio/B7.wav",
+
+  "/audio/C%235.wav", "/audio/C%236.wav", "/audio/C%237.wav",
+  "/audio/C5.wav",    "/audio/C6.wav",    "/audio/C7.wav", "/audio/C8.wav",
+
+  "/audio/D%235.wav", "/audio/D%236.wav", "/audio/D%237.wav",
+  "/audio/D5.wav",    "/audio/D6.wav",    "/audio/D7.wav",
+
+  "/audio/E5.wav",    "/audio/E6.wav",    "/audio/E7.wav",
+
+  "/audio/F%235.wav", "/audio/F%236.wav", "/audio/F%237.wav",
+  "/audio/F5.wav",    "/audio/F6.wav",    "/audio/F7.wav",
+
+  "/audio/G%235.wav", "/audio/G%236.wav", "/audio/G%237.wav",
+  "/audio/G5.wav",    "/audio/G6.wav",    "/audio/G7.wav"
 ];
 
 self.addEventListener("install", (event) => {
@@ -96,5 +110,5 @@ self.addEventListener("fetch", (event) => {
   }
 
   // 3) Everything else: normal network/Cloudflare behavior
-  //    (no event.respondWith here on purpose)
+  //    (no SW caching here on purpose)
 });
